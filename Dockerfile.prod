@@ -10,7 +10,9 @@ WORKDIR /app
 
 COPY package.json package-lock.json ./
 COPY prisma/ ./prisma/
-RUN npm ci
+# --legacy-peer-deps: tolera resoluciones de peer deps no estrictas
+# (común cuando libs aún no marcan soporte para NestJS 11 aunque funcionen)
+RUN npm ci --legacy-peer-deps || npm install --legacy-peer-deps
 
 RUN npx prisma generate
 
