@@ -47,5 +47,9 @@ EXPOSE 3000
 # tini → proper signal handling for graceful shutdown
 ENTRYPOINT ["/sbin/tini", "--"]
 
-# Run pending migrations once (idempotent), then start the server
-CMD ["sh", "-c", "npx prisma migrate deploy && node dist/main.js"]
+# Sincroniza schema con la DB (idempotente, sin historial de migraciones).
+# `db push` es perfecto para apps que aún están evolucionando schema rápido —
+# crea/modifica las tablas para que matcheen exactamente schema.prisma.
+# --accept-data-loss: permite drops si una columna fue removida del schema.
+# --skip-generate: el cliente Prisma ya fue generado en la etapa de build.
+CMD ["sh", "-c", "npx prisma db push --skip-generate --accept-data-loss && node dist/main.js"]
