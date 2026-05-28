@@ -1,0 +1,17 @@
+# ─────────────────────────────────────────────────────────────────────
+#  CrowdSec — fuentes de logs que analizar
+#  Detecta:
+#   - brute-force /api/auth/login (429 desde el throttler)
+#   - escáneres OWASP (sqli, xss, path traversal)
+#   - bots agresivos (rate de requests anómalo)
+#   - intentos de phpmyadmin, .env, .git, wp-login
+# ─────────────────────────────────────────────────────────────────────
+filenames:
+  - /var/log/nginx/access.log
+labels:
+  type: nginx
+---
+filenames:
+  - /var/log/nginx/error.log
+labels:
+  type: nginx

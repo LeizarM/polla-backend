@@ -1,0 +1,43 @@
+# ── Node / NestJS ────────────────────────────────────────────────────
+node_modules/
+dist/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ── Secrets ──────────────────────────────────────────────────────────
+.env
+.env.local
+.env.prod
+.env.*.local
+
+# ── TLS / certs ──────────────────────────────────────────────────────
+*.pem
+*.key
+docker/certbot/conf/
+docker/certbot/www/
+
+# ── Backups locales ─────────────────────────────────────────────────
+backups/
+*.sql.gz
+*.sql.gz.gpg
+
+# ── Build artifacts ─────────────────────────────────────────────────
+tsconfig.build.tsbuildinfo
+package.json.tmp
+
+# ── IDE / OS ─────────────────────────────────────────────────────────
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+
+# ── Scripts de generación que no van al repo ────────────────────────
+create-all-backend.sh
+create-all-modules.sh
+create-betting-modules.sh
+create-matches-tickets.sh
+generate-modules.js
+.gitignore.infra

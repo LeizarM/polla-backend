@@ -1,0 +1,17 @@
+# ═══════════════════════════════════════════════════════════════════════
+#  /etc/sudoers.d/deploy  —  Permisos MÍNIMOS para el usuario `deploy`
+#
+#  El usuario solo puede:
+#    - Manejar docker (ya está en el grupo `docker`, no necesita sudo aquí)
+#    - Hacer pull, restart de servicios sistemd específicos
+#
+#  Instalar:
+#    sudo cp deploy/sudoers-deploy /etc/sudoers.d/deploy
+#    sudo chmod 0440 /etc/sudoers.d/deploy
+#    sudo visudo -c    # valida sintaxis
+# ═══════════════════════════════════════════════════════════════════════
+
+deploy ALL=(root) NOPASSWD: /bin/systemctl reload crowdsec, \
+                            /bin/systemctl restart crowdsec-firewall-bouncer, \
+                            /bin/systemctl status crowdsec, \
+                            /usr/bin/journalctl -u crowdsec -n 200

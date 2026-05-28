@@ -1,0 +1,170 @@
+# ════════════════════════════════════════════════════════════════════════
+#  Mundial 2026 — Production stack (servidor Fedora app.esppapel.com)
+#
+#  Solo backend + DB en este servidor.
+#  El frontend (Expo Web + APK) se deploya APARTE y apunta a:
+#     https://app.esppapel.com:9443
+#
+#  Topología:
+#     internet → :9443 → nginx (TLS + rate-limit + CrowdSec)
+#                          └─► backend:3000 (red `internal`)
+#                                └─► db:5432
+#
+#  Puertos:
+#    9443  → HTTPS público (el 443 ya lo usa tu otra app)
+#    9080  → HTTP (solo redirige a HTTPS; usado para ACME si está libre)
+#
+#  Si tu otra app también usa 9080/9443, cámbialos aquí Y en el sed/firewall.
+# ════════════════════════════════════════════════════════════════════════
+
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  # ── PostgreSQL ───────────────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ./backups:/backups
+    networks: [internal]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    security_opt: [no-new-privileges:true]
+    logging: *default-logging
+
+  # ── NestJS backend ───────────────────────────────────────────────────
+  backend:
+    image: ${BACKEND_IMAGE:-mundial2026/backend:latest}
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?schema=public"
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      # ⚠️ IMPORTANTE: lista exacta de dominios donde corre el frontend.
+      # Web (vercel/netlify/tu host) + APK Android usan el mismo backend.
+      # Para APK necesitas dejar abierto su esquema (capacitor:// / file://)
+      # o usar '*' — el throttler/helmet ya cubre el resto.
+      CORS_ORIGINS: ${CORS_ORIGINS}
+      PORT: 3000
+      ENABLE_SWAGGER: "false"
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:admin@example.com}
+    depends_on:
+      db: { condition: service_healthy }
+    networks: [internal]
+    security_opt: [no-new-privileges:true]
+    tmpfs: [/tmp]
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    logging: *default-logging
+
+  # ── Nginx público (TLS + rate-limit + reverse proxy a backend) ───────
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "9080:80"     # ACME HTTP-01 challenge (si 80 está libre en el host)
+      - "9443:443"    # HTTPS público del backend
+    volumes:
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./docker/nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./docker/certbot/conf:/etc/letsencrypt:ro
+      - ./docker/certbot/www:/var/www/certbot:ro
+      - nginx-logs:/var/log/nginx
+    depends_on: [backend, crowdsec]
+    networks: [internal, public]
+    security_opt: [no-new-privileges:true]
+    logging: *default-logging
+
+  # ── Certbot (Let's Encrypt) ──────────────────────────────────────────
+  certbot:
+    image: certbot/certbot:latest
+    restart: unless-stopped
+    volumes:
+      - ./docker/certbot/conf:/etc/letsencrypt
+      - ./docker/certbot/www:/var/www/certbot
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew --quiet; sleep 12h & wait $${!}; done;'"
+    logging: *default-logging
+
+  # ── CrowdSec (WAF + threat intel) ────────────────────────────────────
+  crowdsec:
+    image: crowdsecurity/crowdsec:latest
+    restart: unless-stopped
+    environment:
+      COLLECTIONS: "crowdsecurity/nginx crowdsecurity/http-cve crowdsecurity/base-http-scenarios crowdsecurity/linux"
+      GID: "1000"
+    ports:
+      - "127.0.0.1:8080:8080"   # LAPI solo accesible desde localhost del host
+                                # (el firewall-bouncer del host la consume)
+    volumes:
+      - crowdsec-db:/var/lib/crowdsec/data
+      - crowdsec-config:/etc/crowdsec
+      - nginx-logs:/var/log/nginx:ro
+      - ./docker/crowdsec/acquis.yaml:/etc/crowdsec/acquis.yaml:ro
+    networks: [internal]
+    security_opt: [no-new-privileges:true]
+    logging: *default-logging
+
+  # ── Daily encrypted DB backup ────────────────────────────────────────
+  db-backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    depends_on: [db]
+    environment:
+      PGUSER: ${POSTGRES_USER}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: ${POSTGRES_DB}
+      BACKUP_GPG_PASSPHRASE: ${BACKUP_GPG_PASSPHRASE}
+    volumes:
+      - ./backups:/backups
+      - ./docker/backup.sh:/backup.sh:ro
+    networks: [internal]
+    entrypoint: ["/bin/sh", "-c"]
+    command: |
+      "apk add --no-cache gnupg gzip coreutils && \
+       while :; do /backup.sh || true; sleep 86400; done"
+    security_opt: [no-new-privileges:true]
+    logging: *default-logging
+
+  # ── Watchtower: rota imágenes que tengan la label de habilitación ────
+  watchtower:
+    image: containrrr/watchtower:latest
+    restart: unless-stopped
+    environment:
+      WATCHTOWER_CLEANUP: "true"
+      WATCHTOWER_POLL_INTERVAL: "300"
+      WATCHTOWER_LABEL_ENABLE: "true"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks: [internal]
+    logging: *default-logging
+
+networks:
+  internal:
+    driver: bridge
+  public:
+    driver: bridge
+
+volumes:
+  pgdata:
+  nginx-logs:
+  crowdsec-db:
+  crowdsec-config:
