@@ -1,18 +1,18 @@
 # ════════════════════════════════════════════════════════════════════════
 #  CI/CD — Backend Mundial 2026
 #
-#  Flujo:
-#    1) Lint + tsc build
-#    2) Build imagen Docker → push a GHCR
-#    3) SSH al Fedora → docker compose pull && up -d
+#  Flow:
+#    1) test    — npm ci + tsc build
+#    2) build   — docker buildx → push to GHCR (lowercase image)
+#    3) deploy  — SSH to Fedora → docker compose pull && up -d + health
 #
-#  Secrets necesarios:
-#    SSH_HOST           app.esppapel.com
+#  Required secrets (Settings → Secrets → Actions):
+#    SSH_HOST           IP or domain of the server
 #    SSH_USER           deploy
 #    SSH_PORT           22
-#    SSH_PRIVATE_KEY    contenido completo de la clave privada ed25519
-#    GHCR_USER          tu usuario de GitHub (LeizarM)
-#    GHCR_TOKEN         PAT classic con scope write:packages
+#    SSH_PRIVATE_KEY    ed25519 private key (BEGIN/END included)
+#    GHCR_USER          GitHub username (any case)
+#    GHCR_TOKEN         PAT classic with write:packages
 # ════════════════════════════════════════════════════════════════════════
 name: Backend Build & Deploy
 
@@ -23,57 +23,86 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE: ${{ github.repository_owner }}/polla-backend
 
 jobs:
+  # ─── 1. Test ─────────────────────────────────────────────────────────
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: 'npm'
-      - run: npm ci
-      - run: npm run lint || true
-      - run: npm run build
 
+      - name: Install deps
+        run: npm ci --legacy-peer-deps
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: TypeScript build
+        run: npm run build
+
+      - name: Lint (non-blocking)
+        run: npm run lint || true
+
+  # ─── 2. Build & push Docker image to GHCR ───────────────────────────
   build:
     needs: test
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
+    outputs:
+      image_lc: ${{ steps.lc.outputs.image }}
     steps:
       - uses: actions/checkout@v4
+
       - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ secrets.GHCR_USER }}
           password: ${{ secrets.GHCR_TOKEN }}
-      - name: Build & push backend image
+
+      # Docker image names must be lowercase. github.repository_owner can be
+      # mixed case (e.g. "LeizarM") → tr to lowercase.
+      - name: Compute lowercase image name
+        id: lc
+        run: |
+          IMAGE=$(echo "${{ github.repository_owner }}/polla-backend" | tr '[:upper:]' '[:lower:]')
+          echo "image=$IMAGE" >> $GITHUB_OUTPUT
+          echo "Image: ${{ env.REGISTRY }}/$IMAGE"
+
+      - name: Build & push
         uses: docker/build-push-action@v6
         with:
           context: .
           file: Dockerfile.prod
           push: true
           tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE }}:latest
-            ${{ env.REGISTRY }}/${{ env.IMAGE }}:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ steps.lc.outputs.image }}:latest
+            ${{ env.REGISTRY }}/${{ steps.lc.outputs.image }}:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           labels: |
             com.centurylinklabs.watchtower.enable=true
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
 
+  # ─── 3. Deploy to Fedora server ─────────────────────────────────────
   deploy:
     needs: build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      # Copia los archivos de infra (compose, docker/, deploy/) al servidor.
-      # El backend en sí corre desde la imagen GHCR, no necesita el código fuente.
+      # Sync only infra files (compose + docker/ configs). The .env.prod
+      # lives on the server and we NEVER touch it from CI.
       - name: Sync infra files to server
         uses: appleboy/scp-action@v0.1.7
         with:
@@ -83,22 +112,47 @@ jobs:
           port: ${{ secrets.SSH_PORT }}
           source: "docker-compose.prod.yml,docker/,deploy/"
           target: "/opt/mundial2026"
+          overwrite: true
+          # ⚠️ This does NOT touch .env.prod, backups/, or any non-listed file.
 
-      - name: SSH deploy
+      - name: Pull image + restart
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT }}
+          command_timeout: 5m
           script: |
-            set -e
+            set -euo pipefail
             cd /opt/mundial2026
+
+            # GHCR login
             echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u "${{ secrets.GHCR_USER }}" --password-stdin
-            export BACKEND_IMAGE=ghcr.io/${{ github.repository_owner }}/polla-backend:${{ github.sha }}
+
+            # Lowercase image name (matches build step)
+            OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+            export BACKEND_IMAGE="ghcr.io/${OWNER}/polla-backend:${{ github.sha }}"
+            echo "→ Deploying image: $BACKEND_IMAGE"
+
             docker compose -f docker-compose.prod.yml --env-file .env.prod pull backend
-            docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --no-build --remove-orphans
-            docker image prune -af --filter "until=168h" || true
+            docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --no-build backend
+
+            # Prune dangling images (keep last week)
+            docker image prune -af --filter "until=168h" >/dev/null 2>&1 || true
+
+      - name: Wait for backend health
+        run: |
+          echo "→ Waiting up to 60s for backend to be healthy..."
+          for i in $(seq 1 12); do
+            CODE=$(curl -sk -o /dev/null -w '%{http_code}' https://app.esppapel.com:9443/health || echo 0)
+            if [ "$CODE" = "200" ]; then
+              echo "✅ Backend healthy on attempt $i"
+              curl -sk https://app.esppapel.com:9443/health
+              exit 0
+            fi
+            echo "  attempt $i: HTTP $CODE — retrying in 5s..."
             sleep 5
-            curl -fsSk https://app.esppapel.com:9443/health || curl -fsS http://localhost:3000/health
-            echo "✅ Deploy OK"
+          done
+          echo "❌ Backend did not become healthy"
+          exit 1
