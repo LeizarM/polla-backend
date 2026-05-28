@@ -23,6 +23,9 @@ export class AppController {
       uptime: process.uptime(),
       timestamp: new Date().toISOString(),
       version: process.env.npm_package_version ?? '1.0.0',
+      // SHA del commit que construyó esta imagen (se hornea via CI/CD)
+      // Útil para verificar qué versión está corriendo.
+      commit: process.env.GIT_SHA ?? 'unknown',
     };
   }
 }

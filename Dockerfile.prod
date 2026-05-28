@@ -39,6 +39,9 @@ COPY --from=builder --chown=app:app /app/package.json ./package.json
 USER app
 
 ENV NODE_ENV=production
+# Build-arg desde CI: el SHA queda en la imagen y lo expone /health
+ARG GIT_SHA=unknown
+ENV GIT_SHA=$GIT_SHA
 EXPOSE 3000
 
 # tini → proper signal handling for graceful shutdown

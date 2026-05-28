@@ -87,6 +87,8 @@ jobs:
           tags: |
             ${{ env.REGISTRY }}/${{ steps.lc.outputs.image }}:latest
             ${{ env.REGISTRY }}/${{ steps.lc.outputs.image }}:${{ github.sha }}
+          build-args: |
+            GIT_SHA=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           labels: |
