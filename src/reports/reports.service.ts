@@ -257,12 +257,14 @@ export class ReportsService {
     doc.moveDown(1.5);
     const y = doc.y;
     const W = doc.page.width;
-    // Subtle divider line
     doc.moveTo(40, y).lineTo(W - 40, y).lineWidth(0.5).stroke(C.borderSoft);
     doc.moveDown(0.4);
-    // Brand mark + date (using ASCII pipe instead of middle-dot for max compatibility)
+    // Formato solicitado: dd/MM/yyyy HH:mm
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const stamp = `${pad(now.getDate())}/${pad(now.getMonth() + 1)}/${now.getFullYear()} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
     doc.fontSize(7).font('Helvetica').fillColor(C.muted)
-      .text(`Documento generado automaticamente  |  ${new Date().toLocaleString('es-MX')}`, { align: 'center' });
+      .text(`Documento generado automaticamente  |  ${stamp}`, { align: 'center' });
   }
 
   /** Generate PDF for a single matchday report */
@@ -462,16 +464,23 @@ export class ReportsService {
       include: { user: { select: { id: true, username: true, full_name: true, phone: true } } },
     });
 
+    // Mantenemos perMatchday (aciertos) para detectar al ganador de cada jornada,
+    // y perMatchdayPrize (premio en dinero) para mostrar en la celda según pedido.
     const userMap = new Map<string, {
       full_name: string; username: string; phone: string;
-      perMatchday: Map<string, number>; totalCorrect: number; totalPrize: number;
+      perMatchday: Map<string, number>;
+      perMatchdayPrize: Map<string, number>;
+      totalCorrect: number; totalPrize: number;
     }>();
 
     for (const p of participants) {
       if (!userMap.has(p.user_id)) {
         userMap.set(p.user_id, {
           full_name: p.user?.full_name ?? '-', username: p.user?.username ?? '-',
-          phone: (p.user as any)?.phone ?? '-', perMatchday: new Map(), totalCorrect: 0, totalPrize: 0,
+          phone: (p.user as any)?.phone ?? '-',
+          perMatchday: new Map(),
+          perMatchdayPrize: new Map(),
+          totalCorrect: 0, totalPrize: 0,
         });
       }
     }
@@ -480,18 +489,25 @@ export class ReportsService {
       if (!userMap.has(t.user_id)) {
         userMap.set(t.user_id, {
           full_name: t.user?.full_name ?? '-', username: t.user?.username ?? '-',
-          phone: (t.user as any)?.phone ?? '-', perMatchday: new Map(), totalCorrect: 0, totalPrize: 0,
+          phone: (t.user as any)?.phone ?? '-',
+          perMatchday: new Map(),
+          perMatchdayPrize: new Map(),
+          totalCorrect: 0, totalPrize: 0,
         });
       }
       const u = userMap.get(t.user_id)!;
-      u.perMatchday.set(t.matchday_id, t.total_correct ?? 0);
-      u.totalCorrect += t.total_correct ?? 0;
-      u.totalPrize += Number(t.prize_won ?? 0);
+      const correct = t.total_correct ?? 0;
+      const prize   = Number(t.prize_won ?? 0);
+      u.perMatchday.set(t.matchday_id, correct);
+      u.perMatchdayPrize.set(t.matchday_id, prize);
+      u.totalCorrect += correct;
+      u.totalPrize   += prize;
     }
 
     const ranking = Array.from(userMap.entries())
       .map(([uid, u]) => ({ uid, ...u }))
-      .sort((a, b) => b.totalCorrect - a.totalCorrect || b.totalPrize - a.totalPrize);
+      // Ordenamos por dinero (ya que ahora mostramos dinero), de mayor a menor.
+      .sort((a, b) => b.totalPrize - a.totalPrize || b.totalCorrect - a.totalCorrect);
 
     const openMatchdays = matchdays.filter(m => m.status === 'open');
     const pendingByMatchday = new Map<string, { full_name: string; username: string }[]>();
@@ -532,59 +548,103 @@ export class ReportsService {
         if (max > 0) maxByMd.set(md.id, max);
       }
 
-      // Section title for the pivot table
-      this.drawSectionTitle(doc, 'Tabla Acumulada', C.primary);
+      // ─── Tabla con paginación horizontal ──────────────────────────────────
+      // Para no cortar con N jornadas grandes (ej. 40), partimos las
+      // jornadas en chunks. En cada chunk repetimos las columnas fijas
+      // (#, Participante, Ganado) y mostramos un subconjunto de jornadas.
+      //
+      // Decisión de tamaño:
+      //   - mdColW fijo en 56 (suficiente para "Bs 30" / "Bs 7.5")
+      //   - Calculamos cuántas jornadas caben por página para el ancho disponible.
+      // ───────────────────────────────────────────────────────────────────────
+      const mdColW    = 56;                 // ancho por columna de jornada (dinero)
+      const posW      = 32;
+      const nameW     = 130;
+      const ganadoW   = 70;
+      const pageWAvail = doc.page.width - 80; // márgenes 40px a cada lado
+      const fixedW    = posW + nameW + ganadoW;
+      const mdPerPage = Math.max(1, Math.floor((pageWAvail - fixedW) / mdColW));
 
-      // Build table
-      const mdHeaders = matchdays.map((_, i) => `J${i + 1}`);
-      const headers = ['#', 'Participante', ...mdHeaders, 'Total', 'Ganado'];
-
-      const pageWidth = doc.page.width - 80;
-      const fixedW = 32 + 140 + 50 + 60; // #, name, total, ganado
-      const mdColW = Math.max(28, Math.min(46, (pageWidth - fixedW) / Math.max(matchdays.length, 1)));
-      const colWidths = [32, 140, ...matchdays.map(() => mdColW), 50, 60];
-
-      this.drawGridHeader(doc, headers, colWidths);
-
-      ranking.forEach((u, i) => {
-        const pos = i + 1;
-        // Build per-MD value strings with a marker for jornada winner
-        const mdValues = matchdays.map(md => {
-          const val = u.perMatchday.get(md.id);
-          if (val === undefined) return '-';
-          const isWinner = val === (maxByMd.get(md.id) ?? -1) && val > 0;
-          return isWinner ? `*${val}` : String(val);
+      // Chunks de matchdays — cada chunk va en una página horizontal nueva
+      const chunks: { start: number; end: number; mds: typeof matchdays }[] = [];
+      for (let i = 0; i < matchdays.length; i += mdPerPage) {
+        chunks.push({
+          start: i,
+          end:   Math.min(i + mdPerPage, matchdays.length),
+          mds:   matchdays.slice(i, i + mdPerPage),
         });
-        // Position rendering — plain numbers (no emojis; row color signals the medal)
-        const posLabel = String(pos);
-        // Highlight: gold/silver/bronze for top 3
-        const highlight: 'gold' | 'silver' | 'bronze' | undefined =
-          pos === 1 ? 'gold' : pos === 2 ? 'silver' : pos === 3 ? 'bronze' : undefined;
-        this.drawGridRow(doc, [
-          posLabel,
-          u.full_name,
-          ...mdValues,
-          String(u.totalCorrect),
-          u.totalPrize > 0 ? `${cur2} ${formatMoney(u.totalPrize)}` : '-',
-        ], colWidths, i, highlight);
-      });
+      }
+      // Si por alguna razón no hay jornadas, al menos un chunk vacío.
+      if (chunks.length === 0) chunks.push({ start: 0, end: 0, mds: [] });
 
-      // Legend with colored dots
-      doc.moveDown(0.4);
-      const legendY = doc.y;
-      let legendX = 40;
-      const drawLegendItem = (color: string, label: string) => {
-        doc.rect(legendX, legendY + 3, 8, 8).fill(color);
-        doc.fontSize(8).font('Helvetica').fillColor(C.muted)
-          .text(label, legendX + 12, legendY + 3, { continued: false });
-        legendX += doc.widthOfString(label) + 24;
-      };
-      drawLegendItem(C.gold,    '1er lugar');
-      drawLegendItem(C.silver,  '2do lugar');
-      drawLegendItem(C.bronze,  '3er lugar');
-      doc.fontSize(8).font('Helvetica-Bold').fillColor(C.gold)
-        .text('* = Ganador de la jornada', legendX, legendY + 3);
-      doc.y = legendY + 16;
+      this.drawSectionTitle(doc, 'Tabla Acumulada (Dinero Ganado por Jornada)', C.primary);
+
+      chunks.forEach((chunk, chunkIdx) => {
+        // Nueva página por cada chunk SALVO el primero (que va en la página actual)
+        if (chunkIdx > 0) doc.addPage();
+
+        // Sub-título indicando el rango de jornadas de esta sección
+        if (chunks.length > 1) {
+          const rangeLabel =
+            chunk.mds.length === 1
+              ? `Jornada ${chunk.start + 1}`
+              : `Jornadas ${chunk.start + 1} a ${chunk.end}`;
+          doc.fontSize(10).font('Helvetica-Bold').fillColor(C.primary)
+            .text(`${rangeLabel}  ·  Página ${chunkIdx + 1} de ${chunks.length}`, 40, doc.y);
+          doc.moveDown(0.4);
+        }
+
+        // Headers para este chunk
+        const mdHeaders = chunk.mds.map((_, i) => `J${chunk.start + i + 1}`);
+        const headers   = ['#', 'Participante', ...mdHeaders, 'Ganado'];
+        const colWidths = [posW, nameW, ...chunk.mds.map(() => mdColW), ganadoW];
+
+        this.drawGridHeader(doc, headers, colWidths);
+
+        // Filas
+        ranking.forEach((u, i) => {
+          const pos = i + 1;
+          const mdValues = chunk.mds.map(md => {
+            const correct = u.perMatchday.get(md.id);
+            const prize   = u.perMatchdayPrize.get(md.id) ?? 0;
+            // Sin ticket en esa jornada → guión
+            if (correct === undefined) return '-';
+            // Detectar si ganó la jornada (más aciertos del grupo)
+            const isWinner = correct === (maxByMd.get(md.id) ?? -1) && correct > 0;
+            // Si ganó algo de dinero, mostramos el monto; sino "0"
+            const moneyStr = prize > 0 ? `${cur2} ${formatMoney(prize)}` : '0';
+            return isWinner ? `*${moneyStr}` : moneyStr;
+          });
+          const highlight: 'gold' | 'silver' | 'bronze' | undefined =
+            pos === 1 ? 'gold' : pos === 2 ? 'silver' : pos === 3 ? 'bronze' : undefined;
+
+          this.drawGridRow(doc, [
+            String(pos),
+            u.full_name,
+            ...mdValues,
+            u.totalPrize > 0 ? `${cur2} ${formatMoney(u.totalPrize)}` : '-',
+          ], colWidths, i, highlight);
+        });
+
+        // Leyenda solo en el último chunk para no repetirla
+        if (chunkIdx === chunks.length - 1) {
+          doc.moveDown(0.4);
+          const legendY = doc.y;
+          let legendX = 40;
+          const drawLegendItem = (color: string, label: string) => {
+            doc.rect(legendX, legendY + 3, 8, 8).fill(color);
+            doc.fontSize(8).font('Helvetica').fillColor(C.muted)
+              .text(label, legendX + 12, legendY + 3, { continued: false });
+            legendX += doc.widthOfString(label) + 24;
+          };
+          drawLegendItem(C.gold,   '1er lugar');
+          drawLegendItem(C.silver, '2do lugar');
+          drawLegendItem(C.bronze, '3er lugar');
+          doc.fontSize(8).font('Helvetica-Bold').fillColor(C.gold)
+            .text('* = Ganador de la jornada', legendX, legendY + 3);
+          doc.y = legendY + 16;
+        }
+      });
 
       // Pending users
       if (pendingByMatchday.size > 0) {
