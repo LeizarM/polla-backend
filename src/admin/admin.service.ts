@@ -36,23 +36,39 @@ export class AdminService {
 
   async getStats() {
     try {
-      const [totalUsers, activeTournaments, totalFinalBets, totalPoolRaw] =
-        await Promise.all([
-          this.prisma.user.count({ where: { role: 'user' } }),
-          this.prisma.tournament.count({ where: { status: 'active' } }),
-          this.prisma.final_bet.count(),
-          this.prisma.matchday.aggregate({
-            _sum: { total_pool: true },
-            where: { status: { in: ['open', 'locked'] } },
-          }),
-        ]);
+      const [
+        totalUsers,
+        activeTournaments,
+        totalFinalBets,
+        totalPoolRaw,
+        totalDistributedRaw,
+      ] = await Promise.all([
+        this.prisma.user.count({ where: { role: 'user' } }),
+        this.prisma.tournament.count({ where: { status: 'active' } }),
+        this.prisma.final_bet.count(),
+        // Pozo activo: dinero en pozos de jornadas abiertas o bloqueadas
+        // (todavía no se sabe quién ganará).
+        this.prisma.matchday.aggregate({
+          _sum: { total_pool: true },
+          where: { status: { in: ['open', 'locked'] } },
+        }),
+        // Pozo repartido: suma de TODOS los premios ya pagados (prize_won)
+        // a través de tickets. Coincide con "Pozo Repartido" del PDF acumulado.
+        this.prisma.ticket.aggregate({
+          _sum: { prize_won: true },
+        }),
+      ]);
 
-      const totalPool = Number(totalPoolRaw._sum?.total_pool ?? 0);
+      const totalPool        = Number(totalPoolRaw._sum?.total_pool ?? 0);
+      const totalDistributed = Number(totalDistributedRaw._sum?.prize_won ?? 0);
 
       return {
         total_users: totalUsers,
         active_tournaments: activeTournaments,
         total_pool: totalPool,
+        total_distributed: totalDistributed,
+        // total_handled = todo el dinero que ha pasado por la app (activo + repartido)
+        total_handled: totalPool + totalDistributed,
         total_final_bets: totalFinalBets,
       };
     } catch (error) {
@@ -61,6 +77,8 @@ export class AdminService {
         total_users: 0,
         active_tournaments: 0,
         total_pool: 0,
+        total_distributed: 0,
+        total_handled: 0,
         total_final_bets: 0,
       };
     }
