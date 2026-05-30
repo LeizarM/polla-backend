@@ -17,22 +17,20 @@ export class AuthService {
   ) {}
 
   async signup(dto: SignupDto) {
-    // Check if user exists
-    const existing = await this.prisma.user.findUnique({
-      where: { username: dto.username },
-    });
+    // ── Username debe ser único ─────────────────────────────────────────
+    const username = dto.username?.trim();
+    if (!username) {
+      throw new ConflictException('El nombre de usuario es obligatorio');
+    }
+    const existing = await this.prisma.user.findUnique({ where: { username } });
     if (existing) {
       throw new ConflictException('El nombre de usuario ya existe');
     }
 
-    // Check CI uniqueness if provided
-    if (dto.ci?.trim()) {
-      const ciExists = await this.prisma.user.findFirst({
-        where: { ci: dto.ci.trim() },
-      });
-      if (ciExists) {
-        throw new ConflictException('Ya existe un usuario con este CI');
-      }
+    // ── CI obligatorio pero NO único (varios users pueden compartir) ───
+    const ci = dto.ci?.trim();
+    if (!ci) {
+      throw new ConflictException('La cédula de identidad es obligatoria');
     }
 
     // Hash password
@@ -41,11 +39,11 @@ export class AuthService {
     // Create user
     const user = await this.prisma.user.create({
       data: {
-        username: dto.username,
+        username,
         password: hashedPassword,
         full_name: dto.full_name,
         phone: dto.phone,
-        ci: dto.ci?.trim() || null,
+        ci,
         role: 'user',
         balance: 0,
         status: 'active',

@@ -15,7 +15,9 @@ model user {
   password      String   @db.VarChar(255)
   full_name     String   @db.VarChar(100)
   phone         String   @db.VarChar(20)
-  ci            String?  @db.VarChar(20)
+  // CI (cédula) es obligatorio pero NO único — varios users pueden
+  // compartirlo (familia, etc.). Solo el username debe ser único.
+  ci            String   @db.VarChar(20)
   role          String   @default("user") @db.VarChar(10)
   balance       Decimal  @default(0.00) @db.Decimal(12, 2)
   status        String   @default("active") @db.VarChar(10)

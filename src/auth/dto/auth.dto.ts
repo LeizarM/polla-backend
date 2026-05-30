@@ -1,5 +1,5 @@
-import { IsString, IsNotEmpty, MinLength, IsOptional } from 'class-validator';
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsString, IsNotEmpty, MinLength } from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
 
 export class SignupDto {
   @ApiProperty({ example: 'johndoe' })
@@ -23,10 +23,12 @@ export class SignupDto {
   @IsNotEmpty()
   phone: string;
 
-  @ApiPropertyOptional({ example: '12345678', description: 'Cédula de Identidad (único)' })
+  // CI obligatorio, NO único — varios usuarios pueden compartir el mismo CI
+  // (familiares, etc.). El único campo único es `username`.
+  @ApiProperty({ example: '12345678', description: 'Cédula de Identidad (obligatoria, puede repetirse)' })
   @IsString()
-  @IsOptional()
-  ci?: string;
+  @IsNotEmpty()
+  ci: string;
 }
 
 export class LoginDto {

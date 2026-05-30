@@ -17,7 +17,9 @@ export class UpdateProfileDto {
   @IsOptional()
   username?: string;
 
-  @ApiProperty({ required: false, description: 'Cédula de identidad (unique)' })
+  // CI obligatorio en signup, opcional aquí porque update puede tocar otros campos
+  // sin re-enviar CI. Si lo manda, lo valida como string. NO es único.
+  @ApiProperty({ required: false, description: 'Cédula de identidad (obligatoria; puede repetirse)' })
   @IsString()
   @IsOptional()
   ci?: string;

@@ -24,20 +24,22 @@ export class UsersService {
   }
 
   async updateProfile(userId: string, dto: UpdateProfileDto) {
-    // Check uniqueness for username
+    // ── Username SÍ debe ser único (incluso en update) ──────────────────
     if (dto.username) {
+      const trimmed = dto.username.trim();
+      if (!trimmed) throw new BadRequestException('El usuario no puede estar vacío');
       const existingUser = await this.prisma.user.findFirst({
-        where: { username: dto.username, id: { not: userId } },
+        where: { username: trimmed, id: { not: userId } },
       });
       if (existingUser) throw new ConflictException('El nombre de usuario ya está en uso');
     }
 
-    // Check uniqueness for CI
-    if (dto.ci) {
-      const existingCi = await this.prisma.user.findFirst({
-        where: { ci: dto.ci, id: { not: userId } },
-      });
-      if (existingCi) throw new ConflictException('La cédula de identidad ya está registrada');
+    // ── CI NO es único (puede repetirse) pero sí obligatorio ────────────
+    // En update, si lo envían debe ser no-vacío. Si NO lo envían, conserva
+    // el valor actual.
+    if (dto.ci !== undefined) {
+      const trimmed = (dto.ci ?? '').trim();
+      if (!trimmed) throw new BadRequestException('La cédula no puede estar vacía');
     }
 
     const updated = await this.prisma.user.update({
@@ -45,8 +47,8 @@ export class UsersService {
       data: {
         ...(dto.full_name && { full_name: dto.full_name }),
         ...(dto.phone && { phone: dto.phone }),
-        ...(dto.username && { username: dto.username }),
-        ...(dto.ci !== undefined && { ci: dto.ci || null }),
+        ...(dto.username && { username: dto.username.trim() }),
+        ...(dto.ci !== undefined && { ci: dto.ci.trim() }),
         ...(dto.fcm_token !== undefined && { fcm_token: dto.fcm_token }),
         updated_at: new Date(),
       },
