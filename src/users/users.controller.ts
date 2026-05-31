@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { FreshAuthGuard } from '../auth/guards/fresh-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { UpdateProfileDto } from './dto/users.dto';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
@@ -33,7 +34,11 @@ export class UsersController {
   }
 
   @Patch('me/password')
-  @ApiOperation({ summary: 'Change current user password' })
+  @UseGuards(FreshAuthGuard)
+  @ApiOperation({
+    summary: 'Change current user password',
+    description: 'Requires fresh authentication: token must be < 5 min old.',
+  })
   async changePassword(
     @CurrentUser() user: any,
     @Body() body: { old_password: string; new_password: string },
