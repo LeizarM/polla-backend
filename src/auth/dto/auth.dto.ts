@@ -1,5 +1,5 @@
-import { IsString, IsNotEmpty } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
+import { IsString, IsNotEmpty, IsOptional } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class SignupDto {
   @ApiProperty({ example: 'johndoe' })
@@ -40,6 +40,33 @@ export class LoginDto {
   username: string;
 
   @ApiProperty({ example: 'user123' })
+  @IsString()
+  @IsNotEmpty()
+  password: string;
+
+  // Solo requerido si el usuario tiene 2FA activado. Si lo manda y no aplica,
+  // se ignora. Si NO lo manda y el user tiene 2FA, login devuelve flag para
+  // que el cliente pida el código.
+  @ApiPropertyOptional({ example: '123456', description: 'TOTP 6-dígitos si tienes 2FA activo' })
+  @IsString()
+  @IsOptional()
+  totp_code?: string;
+}
+
+export class TwoFAEnableDto {
+  @ApiProperty({ example: '123456', description: 'Código TOTP de 6 dígitos' })
+  @IsString()
+  @IsNotEmpty()
+  code: string;
+}
+
+export class TwoFADisableDto {
+  @ApiProperty({ example: '123456', description: 'Código TOTP' })
+  @IsString()
+  @IsNotEmpty()
+  code: string;
+
+  @ApiProperty({ example: 'YourPassword', description: 'Tu password (re-auth)' })
   @IsString()
   @IsNotEmpty()
   password: string;

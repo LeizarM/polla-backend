@@ -6,6 +6,8 @@ import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { LastSeenInterceptor } from './auth/interceptors/last-seen.interceptor';
+import { GeoFenceMiddleware } from './auth/middleware/geo-fence.middleware';
+import { MiddlewareConsumer, NestModule, RequestMethod } from '@nestjs/common';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
@@ -70,4 +72,15 @@ import { AuditModule } from './audit/audit.module';
     { provide: APP_INTERCEPTOR, useClass: LastSeenInterceptor },
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    // GeoFence solo en login + signup. Otras rutas (que requieren JWT) ya
+    // están protegidas por JwtAuthGuard.
+    consumer
+      .apply(GeoFenceMiddleware)
+      .forRoutes(
+        { path: 'api/auth/login', method: RequestMethod.POST },
+        { path: 'api/signup',     method: RequestMethod.POST },
+      );
+  }
+}

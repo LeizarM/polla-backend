@@ -2,6 +2,7 @@ import { Module, Global } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { AuthService } from './auth.service';
+import { TwoFAService } from './twofa.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
@@ -26,9 +27,9 @@ import { PrismaModule } from '../prisma/prisma.module';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, JwtAuthGuard, AdminGuard, CronAuthGuard, FreshAuthGuard],
+  providers: [AuthService, TwoFAService, JwtStrategy, JwtAuthGuard, AdminGuard, CronAuthGuard, FreshAuthGuard],
   // Exportamos JwtModule también para que cualquier guard que dependa de
   // JwtService (como FreshAuthGuard) pueda inyectarlo desde otros módulos.
-  exports: [AuthService, JwtAuthGuard, AdminGuard, CronAuthGuard, FreshAuthGuard, JwtModule],
+  exports: [AuthService, TwoFAService, JwtAuthGuard, AdminGuard, CronAuthGuard, FreshAuthGuard, JwtModule],
 })
 export class AuthModule {}

@@ -97,6 +97,28 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
+    // ── 2FA: si está activado, requerimos código TOTP válido ──────────
+    if (user.totp_enabled && user.totp_secret) {
+      if (!dto.totp_code) {
+        // Cliente no mandó el código. Devolvemos signal especial sin token.
+        return {
+          requires_2fa: true,
+          message: 'Ingresa el código de tu app authenticator',
+        } as any;
+      }
+      // Verificación TOTP inline para no acoplar con TwoFAService
+      const { authenticator } = require('otplib');
+      authenticator.options = { window: 1 };
+      const totpOk = authenticator.verify({
+        token: String(dto.totp_code).trim(),
+        secret: user.totp_secret,
+      });
+      if (!totpOk) {
+        this.registerFailedAttempt(username);
+        throw new UnauthorizedException('Código 2FA incorrecto');
+      }
+    }
+
     // Login OK: limpia el contador
     this.clearFailedAttempts(username);
 
