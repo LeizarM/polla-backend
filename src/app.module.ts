@@ -36,14 +36,21 @@ import { AuditModule } from './audit/audit.module';
     ScheduleModule.forRoot(),
     // ─── Rate limiting (anti brute-force, anti-DDoS soft) ─────────────────
     // Three time-windows running in parallel:
-    //  - "short":  10 req / second   (burst)
-    //  - "medium": 100 req / 10 sec
-    //  - "long":   500 req / minute  (per IP, taking X-Forwarded-For)
-    // Override per-route with @Throttle({...}) — e.g. login = 5/min.
+    //  - "short":  60 req / second   (burst — SPA con muchas queries en paralelo)
+    //  - "medium": 400 req / 10 sec
+    //  - "long":   2000 req / minute  (per IP)
+    //
+    // Estos límites son generosos pero realistas para una SPA moderna que
+    // dispara múltiples queries por pantalla (dashboards, refetch on focus,
+    // push token registration, etc.).
+    //
+    // La protección anti brute-force REAL está en endpoints específicos via
+    // @Throttle({...}) — ej. login = 5/min, signup = 3/min — y en nginx
+    // (zonas auth, api). Ver auth.controller.ts.
     ThrottlerModule.forRoot([
-      { name: 'short',  ttl: 1000,  limit: 10 },
-      { name: 'medium', ttl: 10000, limit: 100 },
-      { name: 'long',   ttl: 60000, limit: 500 },
+      { name: 'short',  ttl: 1000,  limit: 60 },
+      { name: 'medium', ttl: 10000, limit: 400 },
+      { name: 'long',   ttl: 60000, limit: 2000 },
     ]),
     PrismaModule,
     AuditModule,
