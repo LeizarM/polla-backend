@@ -22,6 +22,7 @@ import { TournamentParticipantsModule } from './tournament-participants/tourname
 import { ReportsModule } from './reports/reports.module';
 import { SettingsModule } from './settings/settings.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { AuditModule } from './audit/audit.module';
 
 @Module({
   imports: [
@@ -43,6 +44,7 @@ import { NotificationsModule } from './notifications/notifications.module';
       { name: 'long',   ttl: 60000, limit: 500 },
     ]),
     PrismaModule,
+    AuditModule,
     AuthModule,
     UsersModule,
     TeamsModule,

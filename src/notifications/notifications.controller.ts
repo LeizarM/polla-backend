@@ -4,6 +4,7 @@ import {
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AdminGuard } from '../auth/guards/admin.guard';
+import { CronAuthGuard } from '../auth/guards/cron-auth.guard';
 import { NotificationsService } from './notifications.service';
 import { SchedulesService } from './schedules.service';
 import { RegisterPushTokenDto, SendNotificationDto } from './dto/notifications.dto';
@@ -83,32 +84,26 @@ export class NotificationsController {
   }
 
   @Post('admin/notifications/send')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, AdminGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Admin: Send push notification to specific users' })
-  async sendNotification(@Req() req: any, @Body() dto: SendNotificationDto) {
-    const role = req.user?.role;
-    if (role !== 'admin') {
-      return { error: 'No autorizado' };
-    }
+  async sendNotification(@Body() dto: SendNotificationDto) {
     return this.notificationsService.sendToUsers(dto.user_ids, dto.title, dto.body, dto.data);
   }
 
   @Post('admin/notifications/broadcast')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, AdminGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Admin: Broadcast push notification to all users' })
-  async broadcastNotification(@Req() req: any, @Body() dto: { title: string; body: string; data?: Record<string, any> }) {
-    const role = req.user?.role;
-    if (role !== 'admin') {
-      return { error: 'No autorizado' };
-    }
+  async broadcastNotification(@Body() dto: { title: string; body: string; data?: Record<string, any> }) {
     return this.notificationsService.sendToAll(dto.title, dto.body, dto.data);
   }
 
-  /** Cron endpoint: Send reminders to users who haven't bet on upcoming matchdays */
+  /** Cron endpoint: Send reminders to users who haven't bet on upcoming matchdays.
+   *  PROTEGIDO con CronAuthGuard — requiere header X-Cron-Secret. */
   @Post('cron/matchday-reminders')
-  @ApiOperation({ summary: 'Cron: Send matchday bet reminders' })
+  @UseGuards(CronAuthGuard)
+  @ApiOperation({ summary: 'Cron: Send matchday bet reminders (internal)' })
   @HttpCode(200)
   async cronMatchdayReminders() {
     this.logger.log('Cron: Sending matchday reminders');
@@ -117,7 +112,8 @@ export class NotificationsController {
 
   /** Cron endpoint: Send reminders for final bet deadline */
   @Post('cron/final-bet-reminders')
-  @ApiOperation({ summary: 'Cron: Send final bet deadline reminders' })
+  @UseGuards(CronAuthGuard)
+  @ApiOperation({ summary: 'Cron: Send final bet deadline reminders (internal)' })
   @HttpCode(200)
   async cronFinalBetReminders() {
     this.logger.log('Cron: Sending final bet reminders');

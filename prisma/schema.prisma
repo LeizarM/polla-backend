@@ -272,6 +272,23 @@ model push_token {
   @@index([user_id], map: "idx_pushtoken_user")
 }
 
+// ─── Audit log: registra acciones sensibles (admin, login, cambios de rol) ──
+model audit_log {
+  id           String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  user_id      String?  @db.Uuid           // quién hizo la acción (null si anónimo)
+  action       String   @db.VarChar(50)    // 'login.success' | 'login.failed' | 'admin.create_tournament' | etc.
+  target_type  String?  @db.VarChar(50)    // 'user' | 'tournament' | 'team' | etc.
+  target_id    String?  @db.VarChar(100)
+  ip           String?  @db.VarChar(45)
+  user_agent   String?  @db.VarChar(255)
+  metadata     Json?
+  created_at   DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([user_id,  created_at], map: "idx_audit_user")
+  @@index([action,   created_at], map: "idx_audit_action")
+  @@index([created_at],            map: "idx_audit_time")
+}
+
 model app_setting {
   key       String @id @db.VarChar(100)
   value     String @db.Text

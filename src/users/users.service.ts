@@ -64,12 +64,23 @@ export class UsersService {
   async changePassword(userId: string, oldPassword: string, newPassword: string) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('Usuario no encontrado');
-    if (!newPassword || newPassword.length < 6) {
-      throw new BadRequestException('La nueva contraseña debe tener al menos 6 caracteres');
+
+    // Política igual que en signup: min 8 + letra + número
+    const hasLetter = /[A-Za-z]/.test(newPassword ?? '');
+    const hasNumber = /[0-9]/.test(newPassword ?? '');
+    if (!newPassword || newPassword.length < 8 || !hasLetter || !hasNumber) {
+      throw new BadRequestException(
+        'Contraseña débil: mínimo 8 caracteres, debe incluir letras y números',
+      );
     }
+    // No permitir reutilizar la misma password
+    if (await bcrypt.compare(newPassword, user.password)) {
+      throw new BadRequestException('La nueva contraseña debe ser diferente a la actual');
+    }
+
     const isValid = await bcrypt.compare(oldPassword, user.password);
     if (!isValid) throw new BadRequestException('La contraseña actual es incorrecta');
-    const hashed = await bcrypt.hash(newPassword, 10);
+    const hashed = await bcrypt.hash(newPassword, 12);
     await this.prisma.user.update({
       where: { id: userId },
       data: { password: hashed, updated_at: new Date() },

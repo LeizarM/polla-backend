@@ -33,6 +33,13 @@ export class AuthService {
       throw new ConflictException('La cédula de identidad es obligatoria');
     }
 
+    // ── Política de password: min 8, al menos 1 letra y 1 número ───────
+    if (!this.isPasswordStrong(dto.password)) {
+      throw new ConflictException(
+        'Contraseña débil: mínimo 8 caracteres, debe incluir letras y números',
+      );
+    }
+
     // Hash password
     const hashedPassword = await bcrypt.hash(dto.password, 12);
 
@@ -60,33 +67,84 @@ export class AuthService {
   }
 
   async login(dto: LoginDto) {
-    // Find user
-    const user = await this.prisma.user.findUnique({
-      where: { username: dto.username },
-    });
-
-    if (!user) {
+    const username = dto.username?.trim();
+    if (!username || !dto.password) {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    // Check if user is blocked
+    // Anti brute-force a NIVEL DE CUENTA (complementa el rate-limit por IP).
+    // 5 intentos fallidos consecutivos → 15 min de bloqueo para esa cuenta.
+    if (this.isAccountLocked(username)) {
+      throw new UnauthorizedException(
+        'Demasiados intentos. Espera 15 minutos antes de intentar de nuevo.',
+      );
+    }
+
+    const user = await this.prisma.user.findUnique({ where: { username } });
+    if (!user) {
+      // Registra fallido aunque el usuario no exista — evita enumeration de users
+      this.registerFailedAttempt(username);
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
     if (user.status === 'blocked') {
       throw new UnauthorizedException('Account is blocked');
     }
 
-    // Verify password
     const valid = await bcrypt.compare(dto.password, user.password);
     if (!valid) {
+      this.registerFailedAttempt(username);
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    // Generate token
-    const token = this.generateToken(user.id, user.username, user.role);
+    // Login OK: limpia el contador
+    this.clearFailedAttempts(username);
 
+    const token = this.generateToken(user.id, user.username, user.role);
     return {
       access_token: token,
       user: this.sanitizeUser(user),
     };
+  }
+
+  // ─── Anti-brute-force por cuenta ──────────────────────────────────────────
+  private readonly failedAttempts = new Map<string, { count: number; lockedUntil: number }>();
+  private static readonly MAX_ATTEMPTS = 5;
+  private static readonly LOCK_DURATION_MS = 15 * 60_000; // 15 min
+
+  private isAccountLocked(username: string): boolean {
+    const entry = this.failedAttempts.get(username.toLowerCase());
+    if (!entry) return false;
+    if (Date.now() < entry.lockedUntil) return true;
+    // Expirado → limpiar
+    if (entry.lockedUntil > 0 && Date.now() >= entry.lockedUntil) {
+      this.failedAttempts.delete(username.toLowerCase());
+    }
+    return false;
+  }
+
+  private registerFailedAttempt(username: string) {
+    const key = username.toLowerCase();
+    const entry = this.failedAttempts.get(key) ?? { count: 0, lockedUntil: 0 };
+    entry.count++;
+    if (entry.count >= AuthService.MAX_ATTEMPTS) {
+      entry.lockedUntil = Date.now() + AuthService.LOCK_DURATION_MS;
+    }
+    this.failedAttempts.set(key, entry);
+  }
+
+  private clearFailedAttempts(username: string) {
+    this.failedAttempts.delete(username.toLowerCase());
+  }
+
+  // ─── Política de contraseña ──────────────────────────────────────────────
+  // Mínimo 8 chars + al menos 1 letra + al menos 1 número.
+  // Sin requerimiento de caracter especial (UX trade-off).
+  isPasswordStrong(pwd: string | undefined | null): boolean {
+    if (!pwd || pwd.length < 8) return false;
+    const hasLetter = /[A-Za-z]/.test(pwd);
+    const hasNumber = /[0-9]/.test(pwd);
+    return hasLetter && hasNumber;
   }
 
   async getMe(userId: string) {
