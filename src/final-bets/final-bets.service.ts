@@ -64,6 +64,37 @@ export class FinalBetsService {
     if (!bet) throw new NotFoundException('Apuesta no encontrada');
     if (bet.status !== 'active') throw new BadRequestException('Apuesta ya resuelta');
 
+    // ⚠️ Lock por deadline — NADIE (ni admin) puede cambiar su apuesta final
+    // una vez pasada la fecha límite. Antes solo create() lo chequeaba, así
+    // que se podía crear antes del deadline y editar después.
+    const tournament = await this.prisma.tournament.findUnique({
+      where: { id: bet.tournament_id },
+    });
+    if (!tournament) throw new NotFoundException('Torneo no encontrado');
+    if (tournament.final_bet_deadline && new Date() > tournament.final_bet_deadline) {
+      throw new BadRequestException('La fecha límite para modificar la apuesta final ha pasado');
+    }
+
+    // Si cambian picks, validamos que sean equipos en cuartos y sin duplicados
+    const nextPicks = [
+      dto.pick_1st ?? bet.pick_1st,
+      dto.pick_2nd ?? bet.pick_2nd,
+      dto.pick_3rd ?? bet.pick_3rd,
+      dto.pick_4th ?? bet.pick_4th,
+    ];
+    const quarterTeams = await this.prisma.tournament_team.findMany({
+      where: { tournament_id: bet.tournament_id, advanced_to_quarters: true },
+    });
+    const quarterIds = new Set(quarterTeams.map((t) => t.team_id));
+    for (const pick of nextPicks) {
+      if (!quarterIds.has(pick)) {
+        throw new BadRequestException('Todos los picks deben ser equipos en cuartos de final');
+      }
+    }
+    if (new Set(nextPicks).size !== 4) {
+      throw new BadRequestException('Los picks deben ser 4 equipos diferentes');
+    }
+
     return this.prisma.final_bet.update({
       where: { id },
       data: { ...dto, updated_at: new Date() },
