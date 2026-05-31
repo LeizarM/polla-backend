@@ -1,6 +1,7 @@
 import { Controller, Get, Param, Res, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags, ApiOperation, ApiProduces } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { AdminGuard } from '../auth/guards/admin.guard';
 import { ReportsService } from './reports.service';
 import type { Response } from 'express';
 
@@ -11,8 +12,13 @@ import type { Response } from 'express';
 export class ReportsController {
   constructor(private service: ReportsService) {}
 
+  // ── PDFs financieros/operativos = ADMIN ONLY ──────────────────────────
+  // Exponen quién pagó, pendientes, recaudación. NO deben filtrarse a usuarios.
+  // El JSON `accumulated` (abajo) SÍ es público porque alimenta el ranking
+  // "Torneo Completo" que ven todos los participantes (solo standings, sin PII).
   @Get('matchday/:id/pdf')
-  @ApiOperation({ summary: 'Descargar reporte PDF de una jornada' })
+  @UseGuards(AdminGuard)
+  @ApiOperation({ summary: 'Descargar reporte PDF de una jornada (admin)' })
   @ApiProduces('application/pdf')
   async matchdayPdf(@Param('id') id: string, @Res() res: Response) {
     const buffer = await this.service.generateMatchdayPdf(id);
@@ -31,7 +37,8 @@ export class ReportsController {
   }
 
   @Get('tournament/:id/accumulated/pdf')
-  @ApiOperation({ summary: 'Descargar reporte acumulado PDF de un torneo' })
+  @UseGuards(AdminGuard)
+  @ApiOperation({ summary: 'Descargar reporte acumulado PDF de un torneo (admin)' })
   @ApiProduces('application/pdf')
   async tournamentAccumulatedPdf(@Param('id') id: string, @Res() res: Response) {
     const buffer = await this.service.generateTournamentAccumulatedPdf(id);
@@ -44,7 +51,8 @@ export class ReportsController {
   }
 
   @Get('tournament/:id/polla-final/pdf')
-  @ApiOperation({ summary: 'Descargar reporte PDF de Polla Final' })
+  @UseGuards(AdminGuard)
+  @ApiOperation({ summary: 'Descargar reporte PDF de Polla Final (admin)' })
   @ApiProduces('application/pdf')
   async pollaFinalPdf(@Param('id') id: string, @Res() res: Response) {
     const buffer = await this.service.generatePollaFinalPdf(id);

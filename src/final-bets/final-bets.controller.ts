@@ -55,7 +55,8 @@ export class FinalBetsController {
   }
 
   @Get('tournament/:tournament_id/report')
-  @ApiOperation({ summary: 'Get final bet report for a tournament' })
+  @UseGuards(AdminGuard)
+  @ApiOperation({ summary: 'Get final bet report for a tournament (admin)' })
   async getReport(@Param('tournament_id') tournament_id: string) {
     return this.finalBetsService.getReport(tournament_id);
   }

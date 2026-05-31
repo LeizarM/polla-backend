@@ -53,7 +53,7 @@ export class TournamentParticipantsService {
     }));
   }
 
-  /** Admin: get all requests for a tournament */
+  /** Admin: get all requests for a tournament (incluye PII: phone, ci). */
   async findByTournament(tournamentId: string, status?: string) {
     const where: any = { tournament_id: tournamentId };
     if (status) where.status = status;
@@ -64,6 +64,29 @@ export class TournamentParticipantsService {
       },
       orderBy: { created_at: 'desc' },
     });
+  }
+
+  /**
+   * Roster público (cualquier usuario autenticado) — SOLO datos no sensibles.
+   * Usado por bet-log para calcular "quién no apostó". NUNCA incluye phone/ci.
+   * Devuelve solo participantes aprobados (los pendientes/rechazados son
+   * info de gestión que no debe filtrarse a usuarios normales).
+   */
+  async findRoster(tournamentId: string) {
+    const rows = await this.prisma.tournament_participant.findMany({
+      where: { tournament_id: tournamentId, status: 'approved' },
+      include: {
+        user: { select: { id: true, username: true, full_name: true } },
+      },
+      orderBy: { created_at: 'desc' },
+    });
+    // Devolvemos forma mínima — sin status interno ni timestamps de gestión
+    return rows.map((r) => ({
+      id: r.id,
+      user_id: r.user_id,
+      status: r.status,
+      user: r.user,
+    }));
   }
 
   /** Admin: approve or reject. When approving a late joiner, retroactively
