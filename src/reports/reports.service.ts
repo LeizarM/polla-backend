@@ -566,31 +566,32 @@ export class ReportsService {
       const mdPerPage = Math.max(1, Math.floor((pageWAvail - fixedW) / mdColW));
 
       // Chunks de matchdays — cada chunk va en una página horizontal nueva
-      const chunks: { start: number; end: number; mds: typeof matchdays }[] = [];
+      // Renombrado a `mdChunks` para no chocar con `chunks: Buffer[]` del doc stream
+      const mdChunks: { start: number; end: number; mds: typeof matchdays }[] = [];
       for (let i = 0; i < matchdays.length; i += mdPerPage) {
-        chunks.push({
+        mdChunks.push({
           start: i,
           end:   Math.min(i + mdPerPage, matchdays.length),
           mds:   matchdays.slice(i, i + mdPerPage),
         });
       }
       // Si por alguna razón no hay jornadas, al menos un chunk vacío.
-      if (chunks.length === 0) chunks.push({ start: 0, end: 0, mds: [] });
+      if (mdChunks.length === 0) mdChunks.push({ start: 0, end: 0, mds: [] });
 
       this.drawSectionTitle(doc, 'Tabla Acumulada (Dinero Ganado por Jornada)', C.primary);
 
-      chunks.forEach((chunk, chunkIdx) => {
+      mdChunks.forEach((chunk, chunkIdx) => {
         // Nueva página por cada chunk SALVO el primero (que va en la página actual)
         if (chunkIdx > 0) doc.addPage();
 
         // Sub-título indicando el rango de jornadas de esta sección
-        if (chunks.length > 1) {
+        if (mdChunks.length > 1) {
           const rangeLabel =
             chunk.mds.length === 1
               ? `Jornada ${chunk.start + 1}`
               : `Jornadas ${chunk.start + 1} a ${chunk.end}`;
           doc.fontSize(10).font('Helvetica-Bold').fillColor(C.primary)
-            .text(`${rangeLabel}  ·  Página ${chunkIdx + 1} de ${chunks.length}`, 40, doc.y);
+            .text(`${rangeLabel}  ·  Página ${chunkIdx + 1} de ${mdChunks.length}`, 40, doc.y);
           doc.moveDown(0.4);
         }
 
@@ -627,7 +628,7 @@ export class ReportsService {
         });
 
         // Leyenda solo en el último chunk para no repetirla
-        if (chunkIdx === chunks.length - 1) {
+        if (chunkIdx === mdChunks.length - 1) {
           doc.moveDown(0.4);
           const legendY = doc.y;
           let legendX = 40;
