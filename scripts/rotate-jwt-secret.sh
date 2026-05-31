@@ -30,12 +30,17 @@ NOW_ISO="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 # Backup del .env actual
 cp "$ENV_FILE" "$ENV_FILE.$(date +%Y%m%d_%H%M%S).bak"
 
+# ⚠️ IMPORTANTE: usamos `cat tmp > ENV_FILE` (NO `mv tmp ENV_FILE`).
+# `mv` reemplaza el inode → el archivo resultante hereda el owner/permisos de
+# quien corre el script (ej. systemd User=deploy), rompiendo el acceso del
+# usuario SSH del CI. `cat > archivo` trunca y reescribe el MISMO inode,
+# preservando owner y permisos originales.
+
 # Reemplaza o añade JWT_SECRET
 if grep -q '^JWT_SECRET=' "$ENV_FILE"; then
-  # En lugar de usar sed (puede chocar con caracteres especiales en el secret),
-  # reescribimos el archivo línea por línea
   awk -v new="$NEW_SECRET" '/^JWT_SECRET=/ { print "JWT_SECRET="new; next } { print }' "$ENV_FILE" > "$ENV_FILE.tmp"
-  mv "$ENV_FILE.tmp" "$ENV_FILE"
+  cat "$ENV_FILE.tmp" > "$ENV_FILE"
+  rm -f "$ENV_FILE.tmp"
 else
   echo "JWT_SECRET=$NEW_SECRET" >> "$ENV_FILE"
 fi
@@ -43,12 +48,16 @@ fi
 # Actualiza/añade JWT_LAST_ROTATION
 if grep -q '^JWT_LAST_ROTATION=' "$ENV_FILE"; then
   awk -v ts="$NOW_ISO" '/^JWT_LAST_ROTATION=/ { print "JWT_LAST_ROTATION="ts; next } { print }' "$ENV_FILE" > "$ENV_FILE.tmp"
-  mv "$ENV_FILE.tmp" "$ENV_FILE"
+  cat "$ENV_FILE.tmp" > "$ENV_FILE"
+  rm -f "$ENV_FILE.tmp"
 else
   echo "JWT_LAST_ROTATION=$NOW_ISO" >> "$ENV_FILE"
 fi
 
-chmod 600 "$ENV_FILE"
+# NO forzamos chmod 600 aquí: eso podría dejar fuera al usuario SSH/grupo del
+# CI si el archivo usa permisos de grupo (640). Respetamos los permisos
+# existentes. Si quieres endurecer, hazlo manualmente una vez con el owner
+# correcto: chown deploy:deploy + chmod 600.
 
 echo "✅ JWT_SECRET rotado en $NOW_ISO"
 echo "   Backup en: $ENV_FILE.$(date +%Y%m%d)*.bak"
