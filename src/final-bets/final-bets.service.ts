@@ -75,13 +75,19 @@ export class FinalBetsService {
       throw new BadRequestException('La fecha límite para modificar la apuesta final ha pasado');
     }
 
-    // Si cambian picks, validamos que sean equipos en cuartos y sin duplicados
-    const nextPicks = [
+    // Si cambian picks, validamos que sean equipos en cuartos y sin duplicados.
+    // bet.pick_* es `string | null` en Prisma → filtramos nulls con type guard
+    // para que nextPicks quede tipado como string[].
+    const nextPicks: string[] = [
       dto.pick_1st ?? bet.pick_1st,
       dto.pick_2nd ?? bet.pick_2nd,
       dto.pick_3rd ?? bet.pick_3rd,
       dto.pick_4th ?? bet.pick_4th,
-    ];
+    ].filter((p): p is string => typeof p === 'string' && p.length > 0);
+
+    if (nextPicks.length !== 4) {
+      throw new BadRequestException('Debes seleccionar los 4 equipos');
+    }
     const quarterTeams = await this.prisma.tournament_team.findMany({
       where: { tournament_id: bet.tournament_id, advanced_to_quarters: true },
     });
