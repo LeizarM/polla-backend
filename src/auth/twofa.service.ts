@@ -8,16 +8,26 @@
  *    4. Login normal pide ahora {username, password, totp_code}
  *    5. POST /api/auth/2fa/disable {code, password} → deshabilita
  */
-import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ConflictException, Logger } from '@nestjs/common';
 import { authenticator } from 'otplib';
 import * as QRCode from 'qrcode';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../prisma/prisma.service';
 
-const ISSUER = 'Mundial 2026';
+const ISSUER = 'Mundial2026';   // sin espacios para mejor compat con Google Authenticator
+
+// Configuración GLOBAL de otplib — se aplica una vez al cargar el módulo.
+// window: 2 = tolera ±60 segundos de drift entre reloj del cliente y servidor.
+// digits: 6, step: 30 — defaults estándar compatibles con Google Authenticator.
+authenticator.options = {
+  window: 2,
+  digits: 6,
+  step: 30,
+};
 
 @Injectable()
 export class TwoFAService {
+  private readonly logger = new Logger(TwoFAService.name);
   constructor(private prisma: PrismaService) {}
 
   /** Genera un secret nuevo + QR code (data URL) sin habilitar todavía. */
@@ -28,9 +38,16 @@ export class TwoFAService {
       throw new ConflictException('Ya tienes 2FA activado');
     }
 
-    const secret = authenticator.generateSecret();
+    // Secret de 32 chars (160 bits) — el estándar recomendado RFC 6238
+    // (otplib default es 16 chars = 80 bits, válido pero menos común).
+    const secret = authenticator.generateSecret(20); // 20 bytes → 32 chars base32
     const otpauthUrl = authenticator.keyuri(user.username, ISSUER, secret);
     const qrDataUrl = await QRCode.toDataURL(otpauthUrl);
+
+    this.logger.log(
+      `[2fa.setup] user=${user.username} secret_len=${secret.length} ` +
+      `current_code=${authenticator.generate(secret)} server_time=${new Date().toISOString()}`,
+    );
 
     // Guardamos el secret pero no lo "habilitamos" hasta que verifique código
     await this.prisma.user.update({
@@ -51,8 +68,18 @@ export class TwoFAService {
     if (!user?.totp_secret) {
       throw new BadRequestException('Primero ejecuta /2fa/setup');
     }
-    if (!this.verifyCode(user.totp_secret, code)) {
-      throw new BadRequestException('Código incorrecto');
+    const trimmed = (code ?? '').toString().trim().replace(/\s+/g, '');
+    const expected = authenticator.generate(user.totp_secret);
+    const ok = this.verifyCode(user.totp_secret, trimmed);
+    this.logger.log(
+      `[2fa.enable] user=${user.username} received=${trimmed} ` +
+      `expected_now=${expected} valid=${ok} ` +
+      `server_time=${new Date().toISOString()}`,
+    );
+    if (!ok) {
+      throw new BadRequestException(
+        `Código incorrecto. (Recibido: ${trimmed}, esperado ahora: ${expected})`,
+      );
     }
     await this.prisma.user.update({
       where: { id: userId },
@@ -82,10 +109,11 @@ export class TwoFAService {
   /** Verifica código TOTP — usado por login también. */
   verifyCode(secret: string, code: string): boolean {
     try {
-      // Ventana de ±1 step (30s) para tolerar drift del reloj del cliente
-      authenticator.options = { window: 1 };
-      return authenticator.verify({ token: code?.trim(), secret });
-    } catch {
+      const token = (code ?? '').toString().trim().replace(/\s+/g, '');
+      if (!secret || !token || token.length !== 6) return false;
+      return authenticator.verify({ token, secret });
+    } catch (e) {
+      this.logger.warn(`[2fa.verifyCode] error: ${(e as Error).message}`);
       return false;
     }
   }
