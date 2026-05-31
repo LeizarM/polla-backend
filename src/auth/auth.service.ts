@@ -8,6 +8,7 @@ import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
 import * as bcrypt from 'bcryptjs';
 import { SignupDto, LoginDto } from './dto/auth.dto';
+import { sanitizeUser } from '../common/sanitize-user';
 
 @Injectable()
 export class AuthService {
@@ -189,11 +190,9 @@ export class AuthService {
     });
   }
 
+  // Delega en el helper compartido — ver src/common/sanitize-user.ts para
+  // la lista completa de campos sensibles excluidos.
   private sanitizeUser(user: any) {
-    const { password, ...rest } = user;
-    return {
-      ...rest,
-      balance: Number(rest.balance),
-    };
+    return sanitizeUser(user);
   }
 }

@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { UpdateProfileDto } from './dto/users.dto';
+import { sanitizeUser } from '../common/sanitize-user';
 import * as bcrypt from 'bcryptjs';
 
 @Injectable()
@@ -16,11 +17,7 @@ export class UsersService {
       throw new NotFoundException('User not found');
     }
 
-    const { password, ...rest } = user;
-    return {
-      ...rest,
-      balance: Number(rest.balance),
-    };
+    return sanitizeUser(user);
   }
 
   async updateProfile(userId: string, dto: UpdateProfileDto) {
@@ -54,11 +51,7 @@ export class UsersService {
       },
     });
 
-    const { password, ...rest } = updated;
-    return {
-      ...rest,
-      balance: Number(rest.balance),
-    };
+    return sanitizeUser(updated);
   }
 
   async changePassword(userId: string, oldPassword: string, newPassword: string) {
