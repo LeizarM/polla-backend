@@ -44,9 +44,9 @@ export class TwoFAService {
     const otpauthUrl = authenticator.keyuri(user.username, ISSUER, secret);
     const qrDataUrl = await QRCode.toDataURL(otpauthUrl);
 
+    // NO loguear el current_code (sería leak). Solo info de tamaño.
     this.logger.log(
-      `[2fa.setup] user=${user.username} secret_len=${secret.length} ` +
-      `current_code=${authenticator.generate(secret)} server_time=${new Date().toISOString()}`,
+      `[2fa.setup] user=${user.username} secret_len=${secret.length}`,
     );
 
     // Guardamos el secret pero no lo "habilitamos" hasta que verifique código
@@ -69,17 +69,13 @@ export class TwoFAService {
       throw new BadRequestException('Primero ejecuta /2fa/setup');
     }
     const trimmed = (code ?? '').toString().trim().replace(/\s+/g, '');
-    const expected = authenticator.generate(user.totp_secret);
     const ok = this.verifyCode(user.totp_secret, trimmed);
+    // Solo logueamos el resultado, NUNCA el código esperado (sería leak)
     this.logger.log(
-      `[2fa.enable] user=${user.username} received=${trimmed} ` +
-      `expected_now=${expected} valid=${ok} ` +
-      `server_time=${new Date().toISOString()}`,
+      `[2fa.enable] user=${user.username} code_len=${trimmed.length} valid=${ok}`,
     );
     if (!ok) {
-      throw new BadRequestException(
-        `Código incorrecto. (Recibido: ${trimmed}, esperado ahora: ${expected})`,
-      );
+      throw new BadRequestException('Código incorrecto');
     }
     await this.prisma.user.update({
       where: { id: userId },
