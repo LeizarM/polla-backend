@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, MinLength } from 'class-validator';
+import { IsString, IsNotEmpty } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class SignupDto {
@@ -7,10 +7,12 @@ export class SignupDto {
   @IsNotEmpty()
   username: string;
 
-  @ApiProperty({ example: 'password123', minimum: 6 })
+  // ⚠️ Validación de complejidad en AuthService.signup (min 8 + letra + número).
+  // No usamos @MinLength aquí para que el mensaje de error sea el de "contraseña
+  // débil" que es más útil al usuario (vs "longer than 6").
+  @ApiProperty({ example: 'password123', description: 'min 8 chars + letras + números' })
   @IsString()
   @IsNotEmpty()
-  @MinLength(6)
   password: string;
 
   @ApiProperty({ example: 'John Doe' })
