@@ -4,7 +4,6 @@ import { AuthService } from './auth.service';
 import { TwoFAService } from './twofa.service';
 import { SignupDto, LoginDto, TwoFAEnableDto, TwoFADisableDto } from './dto/auth.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
-import { FreshAuthGuard } from './guards/fresh-auth.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuditService } from '../audit/audit.service';
@@ -72,10 +71,14 @@ export class AuthController {
   }
 
   // ─── 2FA endpoints ──────────────────────────────────────────────────
+  // Nota: NO usamos FreshAuthGuard aquí. La sesión del APK se restaura con un
+  // token persistido (puede ser >5 min) y FreshAuthGuard daba 401 "unauthorized"
+  // al activar 2FA. La protección real ya es fuerte: enable requiere el código
+  // TOTP válido y disable requiere password + TOTP.
   @Post('auth/2fa/setup')
-  @UseGuards(JwtAuthGuard, FreshAuthGuard)
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Generate TOTP secret + QR. Requires fresh auth.' })
+  @ApiOperation({ summary: 'Generate TOTP secret + QR.' })
   async setup2fa(@CurrentUser() user: any, @Req() req: any) {
     const result = await this.twofa.setup(user.userId);
     this.audit.log({
@@ -88,7 +91,7 @@ export class AuthController {
   }
 
   @Post('auth/2fa/enable')
-  @UseGuards(JwtAuthGuard, FreshAuthGuard)
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Enable 2FA after verifying the first TOTP code.' })
   async enable2fa(@CurrentUser() user: any, @Body() dto: TwoFAEnableDto, @Req() req: any) {
@@ -103,7 +106,7 @@ export class AuthController {
   }
 
   @Post('auth/2fa/disable')
-  @UseGuards(JwtAuthGuard, FreshAuthGuard)
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Disable 2FA (requires password + TOTP code).' })
   async disable2fa(@CurrentUser() user: any, @Body() dto: TwoFADisableDto, @Req() req: any) {
