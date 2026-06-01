@@ -6,11 +6,26 @@ import { Prisma } from '@prisma/client';
 export class MatchdaysService {
   constructor(private prisma: PrismaService) {}
 
-  async findAll(userId?: string, userRole?: string, tournament_id?: string, status?: string) {
+  async findAll(
+    userId?: string,
+    userRole?: string,
+    tournament_id?: string,
+    status?: string,
+    upcoming?: boolean,
+  ) {
     const where: Prisma.matchdayWhereInput = {
       ...(tournament_id && { tournament_id }),
       ...(status && { status }),
     };
+
+    // Visibilidad para apostar: una jornada aparece desde 1 día ANTES de su
+    // fecha. Ocultamos las que faltan más de 1 día. Las pasadas/de hoy/mañana
+    // siguen visibles (el status maneja las ya resueltas).
+    //   visible ⇔ date <= ahora + 1 día
+    if (upcoming) {
+      const cutoff = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      where.date = { lte: cutoff };
+    }
 
     // Regular users only see matchdays from their enrolled (approved) tournaments
     if (userId && userRole !== 'admin') {

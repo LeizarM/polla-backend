@@ -27,8 +27,18 @@ export class MatchdaysController {
     @CurrentUser() user: any,
     @Query('tournament_id') tournament_id?: string,
     @Query('status') status?: string,
+    // upcoming=true → solo jornadas visibles para apostar: aparecen desde 1 día
+    // antes de su fecha (oculta las que faltan >1 día). Las vistas de gestión
+    // NO lo pasan, así el admin ve todas para administrarlas.
+    @Query('upcoming') upcoming?: string,
   ) {
-    return this.matchdaysService.findAll(user.userId, user.role, tournament_id, status);
+    return this.matchdaysService.findAll(
+      user.userId,
+      user.role,
+      tournament_id,
+      status,
+      upcoming === 'true' || upcoming === '1',
+    );
   }
 
   @Get(':id')
