@@ -15,8 +15,23 @@ export class TournamentsService {
         _count: { select: { matchdays: true, tournament_teams: true, final_bets: true, participants: true } },
       },
     });
+
+    // Conteo de participantes APROBADOS por torneo (los únicos que cuentan
+    // para el pozo). `_count.participants` incluye pendientes/rechazados.
+    const ids = tournaments.map(t => t.id);
+    const approvedMap = new Map<string, number>();
+    if (ids.length) {
+      const grouped = await this.prisma.tournament_participant.groupBy({
+        by: ['tournament_id'],
+        where: { tournament_id: { in: ids }, status: 'approved' },
+        _count: { _all: true },
+      });
+      grouped.forEach(g => approvedMap.set(g.tournament_id, g._count._all));
+    }
+
     return tournaments.map(t => ({
       ...t,
+      approved_participants: approvedMap.get(t.id) ?? 0,
       bet_per_matchday: Number(t.bet_per_matchday),
       bet_final: Number(t.bet_final),
       house_cut_pct: Number(t.house_cut_pct),
@@ -38,8 +53,13 @@ export class TournamentsService {
     if (!tournament) {
       throw new NotFoundException('Tournament not found');
     }
+    // Solo participantes aprobados cuentan para el pozo
+    const approvedParticipants = await this.prisma.tournament_participant.count({
+      where: { tournament_id: id, status: 'approved' },
+    });
     return {
       ...tournament,
+      approved_participants: approvedParticipants,
       teams: tournament.tournament_teams.map(tt => ({
         ...tt.team,
         advanced_to_quarters: tt.advanced_to_quarters,
