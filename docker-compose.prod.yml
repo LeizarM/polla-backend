@@ -93,6 +93,8 @@ services:
       - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./docker/nginx/conf.d:/etc/nginx/conf.d:ro
       - /etc/letsencrypt:/etc/letsencrypt:ro
+      # Frontend web (Expo export) — subí el dist/ a /opt/mundial2026/frontend-dist
+      - ./frontend-dist:/usr/share/nginx/html:ro
       - nginx-logs:/var/log/nginx
     depends_on: [backend, crowdsec]
     networks: [internal, public]
