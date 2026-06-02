@@ -29,14 +29,16 @@ export class AuthService {
     }
 
     // ── CI obligatorio pero NO único (varios users pueden compartir) ───
+    // BadRequest (400), NO Conflict (409): el 409 lo reserva el frontend para
+    // "usuario en uso". Antes esto daba 409 → mensaje equivocado.
     const ci = dto.ci?.trim();
     if (!ci) {
-      throw new ConflictException('La cédula de identidad es obligatoria');
+      throw new BadRequestException('La cédula de identidad es obligatoria');
     }
 
     // ── Política de password: min 8, al menos 1 letra y 1 número ───────
     if (!this.isPasswordStrong(dto.password)) {
-      throw new ConflictException(
+      throw new BadRequestException(
         'Contraseña débil: mínimo 8 caracteres, debe incluir letras y números',
       );
     }
