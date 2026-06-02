@@ -143,18 +143,28 @@ jobs:
             # Prune dangling images (keep last week)
             docker image prune -af --filter "until=168h" >/dev/null 2>&1 || true
 
+      # El health check corre EN EL SERVER vía SSH (curl a localhost), NO desde
+      # el runner. Asi no depende del DNS publico de app.esppapel.com (que puede
+      # estar caido) — el runner no necesita resolver el dominio.
       - name: Wait for backend health
-        run: |
-          echo "→ Waiting up to 60s for backend to be healthy..."
-          for i in $(seq 1 12); do
-            CODE=$(curl -sk -o /dev/null -w '%{http_code}' https://app.esppapel.com:9443/health || echo 0)
-            if [ "$CODE" = "200" ]; then
-              echo "✅ Backend healthy on attempt $i"
-              curl -sk https://app.esppapel.com:9443/health
-              exit 0
-            fi
-            echo "  attempt $i: HTTP $CODE — retrying in 5s..."
-            sleep 5
-          done
-          echo "❌ Backend did not become healthy"
-          exit 1
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          command_timeout: 2m
+          script: |
+            echo "→ Esperando hasta 60s a que el backend este sano (localhost)..."
+            for i in $(seq 1 12); do
+              CODE=$(curl -sk -o /dev/null -w '%{http_code}' https://localhost:9443/health || echo 0)
+              if [ "$CODE" = "200" ]; then
+                echo "✅ Backend healthy en intento $i"
+                curl -sk https://localhost:9443/health
+                exit 0
+              fi
+              echo "  intento $i: HTTP $CODE — reintentando en 5s..."
+              sleep 5
+            done
+            echo "❌ Backend no respondio healthy"
+            exit 1
