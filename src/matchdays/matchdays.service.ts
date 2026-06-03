@@ -22,7 +22,12 @@ export class MatchdaysService {
     // fecha. Ocultamos las que faltan más de 1 día. Las pasadas/de hoy/mañana
     // siguen visibles (el status maneja las ya resueltas).
     //   visible ⇔ date <= ahora + 1 día
-    if (upcoming) {
+    //
+    // SEGURIDAD: para usuarios normales la ventana se FUERZA acá en el server
+    // (no depende del query param `upcoming` que manda el front). Así un usuario
+    // no puede listar jornadas futuras llamando la API sin el parámetro. El
+    // admin SÍ ve todas (las vistas de gestión no pasan upcoming).
+    if (upcoming || userRole !== 'admin') {
       const cutoff = new Date(Date.now() + 24 * 60 * 60 * 1000);
       where.date = { lte: cutoff };
     }

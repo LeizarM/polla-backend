@@ -57,6 +57,17 @@ export class TicketsService {
     if (!matchday) throw new NotFoundException('Matchday not found');
     if (matchday.status !== 'open') throw new BadRequestException('Jornada no está abierta para apuestas');
 
+    // SEGURIDAD: la ventana de "1 día antes" también se valida al APOSTAR (no
+    // solo al listar). No se puede apostar en una jornada que falta más de 1
+    // día, aunque su status sea 'open' o se llame la API directamente.
+    //   permitido ⇔ date <= ahora + 1 día
+    const betCutoff = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    if (matchday.date && new Date(matchday.date) > betCutoff) {
+      throw new BadRequestException(
+        'Esta jornada todavía no está disponible para apostar (abre 1 día antes de su fecha)',
+      );
+    }
+
     // Check user is approved participant
     const participant = await this.prisma.tournament_participant.findUnique({
       where: { user_id_tournament_id: { user_id: userId, tournament_id: matchday.tournament_id } },
