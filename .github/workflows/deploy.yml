@@ -138,7 +138,21 @@ jobs:
             echo "→ Deploying image: $BACKEND_IMAGE"
 
             docker compose -f docker-compose.prod.yml --env-file .env.prod pull backend
-            docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --no-build backend
+            # --force-recreate: garantiza que el contenedor se recree con la
+            # imagen NUEVA aunque compose crea que "nada cambio".
+            docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --force-recreate --no-build backend
+
+            # ── Asercion anti "falso-verde" ──────────────────────────────────
+            # El contenedor DEBE estar corriendo la imagen que acabamos de
+            # deployar. Si no coincide, fallamos el deploy (ROJO) en vez de
+            # mentir con un verde. Asi nunca mas "deploya" sin deployar.
+            RUNNING=$(docker inspect mundial2026-backend-1 --format '{{.Config.Image}}')
+            echo "Imagen corriendo: $RUNNING"
+            if [ "$RUNNING" != "$BACKEND_IMAGE" ]; then
+              echo "❌ El swap NO se aplico. Esperaba: $BACKEND_IMAGE  Corriendo: $RUNNING"
+              exit 1
+            fi
+            echo "✅ Swap confirmado: $RUNNING"
 
             # Prune dangling images (keep last week)
             docker image prune -af --filter "until=168h" >/dev/null 2>&1 || true
