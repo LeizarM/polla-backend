@@ -296,8 +296,9 @@ export class ReportsService {
       // Users who bet
       this.drawSectionTitle(doc, 'Participantes que Apostaron', C.success);
       if ((report?.users_bet?.length ?? 0) > 0) {
-        const headers = ['#', 'Nombre', 'Usuario', 'Aciertos', 'Premio', 'Estado'];
-        const widths = [30, 150, 100, 60, 70, 70];
+        // Privacidad: NO mostramos usuario (@) ni telefono en los reportes.
+        const headers = ['#', 'Nombre', 'Aciertos', 'Premio', 'Estado'];
+        const widths = [30, 250, 60, 70, 70];
         this.drawGridHeader(doc, headers, widths);
         (report?.users_bet ?? []).forEach((u: any, i: number) => {
           const isWinner = u?.status === 'won';
@@ -309,7 +310,6 @@ export class ReportsService {
           this.drawGridRow(doc, [
             String(i + 1),
             u?.full_name ?? '-',
-            `@${u?.username ?? '-'}`,
             String(u?.total_correct ?? '-'),
             (u?.prize_won ?? 0) > 0 ? `${cur} ${Number(u.prize_won).toFixed(2)}` : '-',
             u?.status === 'won' ? 'GANADOR' : (u?.status ?? '-'),
@@ -323,11 +323,12 @@ export class ReportsService {
       if ((report?.pending_users?.length ?? 0) > 0) {
         doc.moveDown(0.5);
         this.drawSectionTitle(doc, 'No Apostaron', C.danger);
-        const pHeaders = ['#', 'Nombre', 'Usuario', 'Telefono'];
-        const pWidths = [30, 170, 130, 120];
+        // Privacidad: solo numero y nombre (sin usuario ni telefono).
+        const pHeaders = ['#', 'Nombre'];
+        const pWidths = [40, 410];
         this.drawGridHeader(doc, pHeaders, pWidths);
         (report?.pending_users ?? []).forEach((u: any, i: number) => {
-          this.drawGridRow(doc, [String(i + 1), u?.full_name ?? '-', `@${u?.username ?? '-'}`, u?.phone ?? '-'], pWidths, i);
+          this.drawGridRow(doc, [String(i + 1), u?.full_name ?? '-'], pWidths, i);
         });
       }
 
@@ -344,7 +345,7 @@ export class ReportsService {
         doc.fontSize(9).font('Helvetica').fillColor(C.text)
           .text(`Maximo aciertos: ${winners?.max_correct ?? 0}  |  Premio por ganador: ${cur} ${Number(winners?.prize_per_winner ?? 0).toFixed(2)}`, 60, y + 30);
         doc.fontSize(10).font('Helvetica-Bold').fillColor(C.primaryDk)
-          .text((winners?.winners ?? []).map((w: any) => `${w?.full_name ?? '-'} (@${w?.username ?? '-'})`).join('   |   '),
+          .text((winners?.winners ?? []).map((w: any) => `${w?.full_name ?? '-'}`).join('   |   '),
                 60, y + 44, { width: W - 100 });
         doc.y = y + 70;
       }
@@ -659,8 +660,9 @@ export class ReportsService {
             .fontSize(8).font('Helvetica').fillColor(C.muted)
             .text(`(${new Date(md.date).toLocaleDateString('es-MX')}) - ${pending.length} pendiente${pending.length === 1 ? '' : 's'}`);
           doc.fontSize(8).font('Helvetica').fillColor(C.text);
+          // Privacidad: sin (@usuario) en el listado de pendientes.
           pending.forEach((p, i) => {
-            doc.text(`   ${i + 1}.  ${p.full_name}  (@${p.username})`);
+            doc.text(`   ${i + 1}.  ${p.full_name}`);
           });
           doc.moveDown(0.3);
         }
@@ -738,11 +740,12 @@ export class ReportsService {
       // Pending users
       if (pendingUsers.length > 0) {
         this.drawSectionTitle(doc, 'No Apostaron en la Polla Final', C.danger);
-        const pHeaders = ['#', 'Nombre', 'Usuario', 'Teléfono'];
-        const pWidths = [30, 200, 150, 120];
+        // Privacidad: solo numero y nombre (sin usuario ni telefono).
+        const pHeaders = ['#', 'Nombre'];
+        const pWidths = [40, 460];
         this.drawGridHeader(doc, pHeaders, pWidths);
         pendingUsers.forEach((u, i) => {
-          this.drawGridRow(doc, [String(i + 1), u.full_name, `@${u.username}`, u.phone], pWidths, i);
+          this.drawGridRow(doc, [String(i + 1), u.full_name], pWidths, i);
         });
       }
 
