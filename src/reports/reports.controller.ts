@@ -2,6 +2,7 @@ import { Controller, Get, Param, Res, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags, ApiOperation, ApiProduces } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AdminGuard } from '../auth/guards/admin.guard';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { ReportsService } from './reports.service';
 import type { Response } from 'express';
 
@@ -32,8 +33,9 @@ export class ReportsController {
 
   @Get('tournament/:id/accumulated')
   @ApiOperation({ summary: 'Get accumulated report JSON for a tournament' })
-  async tournamentAccumulatedJson(@Param('id') id: string) {
-    return this.service.getAccumulatedReport(id);
+  async tournamentAccumulatedJson(@CurrentUser() user: any, @Param('id') id: string) {
+    // Solo admin o participante APROBADO del torneo (check dentro del service).
+    return this.service.getAccumulatedReport(id, user?.userId, user?.role);
   }
 
   @Get('tournament/:id/accumulated/pdf')

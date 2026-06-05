@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, ForbiddenException } from '@nestjs/common';
 import PDFDocument from 'pdfkit';
 import { PrismaService } from '../prisma/prisma.service';
 import { MatchdaysService } from '../matchdays/matchdays.service';
@@ -356,12 +356,26 @@ export class ReportsService {
   }
 
   /** Get accumulated report as JSON */
-  async getAccumulatedReport(tournamentId: string) {
+  async getAccumulatedReport(tournamentId: string, userId?: string, userRole?: string) {
     const tournament = await this.prisma.tournament.findUnique({
       where: { id: tournamentId },
       include: { matchdays: { orderBy: { date: 'asc' } } },
     });
     if (!tournament) throw new NotFoundException('Torneo no encontrado');
+
+    // SEGURIDAD: solo admins o participantes APROBADOS del torneo pueden ver el
+    // ranking acumulado. Antes cualquier usuario autenticado podía enumerar el
+    // roster (nombres) de CUALQUIER torneo por ID.
+    if (userRole !== 'admin') {
+      const part = userId
+        ? await this.prisma.tournament_participant.findUnique({
+            where: { user_id_tournament_id: { user_id: userId, tournament_id: tournamentId } },
+          })
+        : null;
+      if (!part || part.status !== 'approved') {
+        throw new ForbiddenException('No estás inscrito en este torneo');
+      }
+    }
 
     const matchdays = tournament.matchdays;
     const allTickets = await this.prisma.ticket.findMany({

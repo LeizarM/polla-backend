@@ -1,6 +1,7 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import * as bcrypt from 'bcryptjs';
+import { sanitizeUser } from '../common/sanitize-user';
 
 @Injectable()
 export class AdminService {
@@ -107,8 +108,8 @@ export class AdminService {
       where: { id: userId },
       data: { status, updated_at: new Date() },
     });
-    const { password, ...rest } = updated;
-    return rest;
+    // sanitizeUser: no filtrar totp_secret / failed_login_attempts / locked_until.
+    return sanitizeUser(updated);
   }
 
   async updateUserRole(userId: string, role: string) {
@@ -119,8 +120,7 @@ export class AdminService {
       where: { id: userId },
       data: { role, updated_at: new Date() },
     });
-    const { password, ...rest } = updated;
-    return rest;
+    return sanitizeUser(updated);
   }
 
   async resetPassword(userId: string, newPassword: string) {
@@ -132,7 +132,6 @@ export class AdminService {
       where: { id: userId },
       data: { password: hashed, updated_at: new Date() },
     });
-    const { password, ...rest } = updated;
-    return { ...rest, message: 'Password updated' };
+    return { ...sanitizeUser(updated), message: 'Password updated' };
   }
 }
