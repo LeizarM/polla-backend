@@ -25,6 +25,13 @@ model user {
   // ── 2FA (TOTP) — solo para admins por ahora ────────────────────────
   totp_secret   String?  @db.VarChar(64)    // base32 secret cifrado
   totp_enabled  Boolean  @default(false)
+  // Anti-replay TOTP: último "step" (contador de 30s) aceptado en un login.
+  // Un código de un step <= a este se rechaza → uso único dentro de su ventana.
+  totp_last_step Int?
+  // Anti brute-force PERSISTIDO (sobrevive reinicios y es compartido entre
+  // instancias — antes era un Map en memoria, bypasseable reiniciando).
+  failed_login_attempts Int       @default(0)
+  locked_until           DateTime? @db.Timestamptz(6)
   // Última actividad autenticada — actualizado por el interceptor cada ~1 min.
   // Usado para "usuarios conectados" en /admin/notificaciones → Stats.
   last_seen_at  DateTime? @db.Timestamptz(6)

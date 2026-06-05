@@ -6,9 +6,16 @@ const prisma = new PrismaClient();
 async function main() {
   console.log('Seeding database...');
 
-  // Hash passwords
-  const adminPassword = await bcrypt.hash('admin123', 12);
-  const userPassword = await bcrypt.hash('user123', 12);
+  // Sin defaults débiles: las contraseñas del seed vienen de env vars. Si no
+  // están seteadas, el seed se aborta → ya NO se crea admin/admin123 (una
+  // credencial conocida con rol admin).
+  const seedAdminPwd = process.env.SEED_ADMIN_PASSWORD;
+  const seedUserPwd = process.env.SEED_USER_PASSWORD;
+  if (!seedAdminPwd || !seedUserPwd) {
+    throw new Error('Setea SEED_ADMIN_PASSWORD y SEED_USER_PASSWORD antes de correr el seed.');
+  }
+  const adminPassword = await bcrypt.hash(seedAdminPwd, 12);
+  const userPassword = await bcrypt.hash(seedUserPwd, 12);
 
   // Upsert users
   const admin = await prisma.user.upsert({

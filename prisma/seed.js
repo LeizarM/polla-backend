@@ -28,8 +28,11 @@ const bcrypt = __importStar(require("bcryptjs"));
 const prisma = new client_1.PrismaClient();
 async function main() {
     console.log('Seeding database...');
-    const adminPassword = await bcrypt.hash('admin123', 12);
-    const userPassword = await bcrypt.hash('user123', 12);
+    if (!process.env.SEED_ADMIN_PASSWORD || !process.env.SEED_USER_PASSWORD) {
+        throw new Error('Setea SEED_ADMIN_PASSWORD y SEED_USER_PASSWORD antes de correr el seed.');
+    }
+    const adminPassword = await bcrypt.hash(process.env.SEED_ADMIN_PASSWORD, 12);
+    const userPassword = await bcrypt.hash(process.env.SEED_USER_PASSWORD, 12);
     const admin = await prisma.user.upsert({
         where: { username: 'admin' },
         update: {},

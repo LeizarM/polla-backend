@@ -20,7 +20,7 @@ const ISSUER = 'Mundial2026';   // sin espacios para mejor compat con Google Aut
 // window: 2 = tolera ±60 segundos de drift entre reloj del cliente y servidor.
 // digits: 6, step: 30 — defaults estándar compatibles con Google Authenticator.
 authenticator.options = {
-  window: 2,
+  window: 1,  // ±30s (antes ±60s) — menor ventana de replay del código TOTP
   digits: 6,
   step: 30,
 };

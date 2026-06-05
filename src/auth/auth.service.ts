@@ -7,6 +7,7 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
 import * as bcrypt from 'bcryptjs';
+import { authenticator } from 'otplib';
 import { SignupDto, LoginDto } from './dto/auth.dto';
 import { sanitizeUser } from '../common/sanitize-user';
 
@@ -75,18 +76,20 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    // Anti brute-force a NIVEL DE CUENTA (complementa el rate-limit por IP).
-    // 5 intentos fallidos consecutivos → 15 min de bloqueo para esa cuenta.
-    if (this.isAccountLocked(username)) {
+    const user = await this.prisma.user.findUnique({ where: { username } });
+
+    // Lockout a NIVEL DE CUENTA, PERSISTIDO en DB (sobrevive reinicios y es
+    // compartido entre instancias — complementa el rate-limit por IP).
+    if (user?.locked_until && user.locked_until > new Date()) {
       throw new UnauthorizedException(
-        'Demasiados intentos. Espera 15 minutos antes de intentar de nuevo.',
+        'Demasiados intentos. Espera unos minutos antes de intentar de nuevo.',
       );
     }
 
-    const user = await this.prisma.user.findUnique({ where: { username } });
     if (!user) {
-      // Registra fallido aunque el usuario no exista — evita enumeration de users
-      this.registerFailedAttempt(username);
+      // Compare contra un hash dummy para IGUALAR el timing con el caso
+      // "user existe, pass mala" → evita enumeration de usuarios por tiempo.
+      await bcrypt.compare(dto.password, AuthService.DUMMY_HASH);
       throw new UnauthorizedException('Invalid credentials');
     }
 
@@ -96,11 +99,11 @@ export class AuthService {
 
     const valid = await bcrypt.compare(dto.password, user.password);
     if (!valid) {
-      this.registerFailedAttempt(username);
+      await this.registerFailedAttempt(user.id, user.failed_login_attempts);
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    // ── 2FA: si está activado, requerimos código TOTP válido ──────────
+    // ── 2FA: si está activado, requerimos código TOTP válido (uso único) ──
     if (user.totp_enabled && user.totp_secret) {
       if (!dto.totp_code) {
         // Cliente no mandó el código. Devolvemos signal especial sin token.
@@ -109,21 +112,22 @@ export class AuthService {
           message: 'Ingresa el código de tu app authenticator',
         } as any;
       }
-      // Verificación TOTP inline para no acoplar con TwoFAService
-      const { authenticator } = require('otplib');
-      authenticator.options = { window: 1 };
-      const totpOk = authenticator.verify({
-        token: String(dto.totp_code).trim(),
-        secret: user.totp_secret,
-      });
+      const totpOk = await this.verifyTotpOnce(
+        user.id, user.totp_secret, dto.totp_code, user.totp_last_step ?? null,
+      );
       if (!totpOk) {
-        this.registerFailedAttempt(username);
-        throw new UnauthorizedException('Código 2FA incorrecto');
+        await this.registerFailedAttempt(user.id, user.failed_login_attempts);
+        throw new UnauthorizedException('Código 2FA incorrecto o ya usado');
       }
     }
 
-    // Login OK: limpia el contador
-    this.clearFailedAttempts(username);
+    // Login OK: resetea contador/lock si hacía falta.
+    if (user.failed_login_attempts > 0 || user.locked_until) {
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: { failed_login_attempts: 0, locked_until: null },
+      });
+    }
 
     const token = this.generateToken(user.id, user.username, user.role);
     return {
@@ -132,34 +136,46 @@ export class AuthService {
     };
   }
 
-  // ─── Anti-brute-force por cuenta ──────────────────────────────────────────
-  private readonly failedAttempts = new Map<string, { count: number; lockedUntil: number }>();
+  // ─── Anti-brute-force PERSISTIDO (DB) ─────────────────────────────────────
   private static readonly MAX_ATTEMPTS = 5;
   private static readonly LOCK_DURATION_MS = 15 * 60_000; // 15 min
+  // Hash dummy (cost 12) para igualar el timing cuando el usuario NO existe
+  // (anti-enumeration). Se computa una vez al cargar el módulo.
+  private static readonly DUMMY_HASH = bcrypt.hashSync('timing-equalizer-no-user', 12);
 
-  private isAccountLocked(username: string): boolean {
-    const entry = this.failedAttempts.get(username.toLowerCase());
-    if (!entry) return false;
-    if (Date.now() < entry.lockedUntil) return true;
-    // Expirado → limpiar
-    if (entry.lockedUntil > 0 && Date.now() >= entry.lockedUntil) {
-      this.failedAttempts.delete(username.toLowerCase());
+  private async registerFailedAttempt(userId: string, current: number) {
+    const attempts = (current ?? 0) + 1;
+    const data: any = { failed_login_attempts: attempts };
+    if (attempts >= AuthService.MAX_ATTEMPTS) {
+      data.locked_until = new Date(Date.now() + AuthService.LOCK_DURATION_MS);
+      data.failed_login_attempts = 0; // reset tras bloquear
     }
-    return false;
+    await this.prisma.user.update({ where: { id: userId }, data });
   }
 
-  private registerFailedAttempt(username: string) {
-    const key = username.toLowerCase();
-    const entry = this.failedAttempts.get(key) ?? { count: 0, lockedUntil: 0 };
-    entry.count++;
-    if (entry.count >= AuthService.MAX_ATTEMPTS) {
-      entry.lockedUntil = Date.now() + AuthService.LOCK_DURATION_MS;
-    }
-    this.failedAttempts.set(key, entry);
-  }
-
-  private clearFailedAttempts(username: string) {
-    this.failedAttempts.delete(username.toLowerCase());
+  /**
+   * Verifica TOTP con USO ÚNICO (anti-replay). Calcula el "step" (contador de
+   * 30s) que matcheó y lo guarda; un código de un step ya usado (o anterior)
+   * se rechaza → un código capturado no se puede reusar dentro de su ventana.
+   */
+  private async verifyTotpOnce(
+    userId: string,
+    secret: string,
+    code: string,
+    lastStep: number | null,
+  ): Promise<boolean> {
+    const token = String(code ?? '').trim().replace(/\s+/g, '');
+    if (token.length !== 6) return false;
+    authenticator.options = { window: 1, digits: 6, step: 30 };
+    const delta = authenticator.checkDelta(token, secret); // null si es inválido
+    if (delta === null || delta === undefined) return false;
+    const step = Math.floor(Date.now() / 1000 / 30) + delta;
+    if (lastStep != null && step <= lastStep) return false; // replay
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { totp_last_step: step },
+    });
+    return true;
   }
 
   // ─── Política de contraseña ──────────────────────────────────────────────
