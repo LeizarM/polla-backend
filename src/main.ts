@@ -5,6 +5,7 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import helmet from 'helmet';
 import compression from 'compression';
 import { AppModule } from './app.module';
+import { AllExceptionsFilter } from './common/all-exceptions.filter';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -54,6 +55,9 @@ async function bootstrap() {
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     allowedHeaders: 'Content-Type,Authorization,Accept,Origin,X-Requested-With',
   });
+
+  // ─── Filtro global de excepciones (no filtrar stack/errores internos) ─────
+  app.useGlobalFilters(new AllExceptionsFilter());
 
   // ─── Global validation ────────────────────────────────────────────────────
   app.useGlobalPipes(
