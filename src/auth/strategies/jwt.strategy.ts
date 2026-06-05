@@ -33,26 +33,25 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     private prisma: PrismaService,
   ) {
     const secret = (config.get<string>('JWT_SECRET') ?? '').trim();
-    // Warning, NO throw — no queremos que el container crashee si por
-    // alguna razón el env var no llega (ej. .env.prod mal formateado).
-    // Pero forzamos un secret mínimo de 16 chars para evitar uso del default.
+    // FAIL CLOSED: sin un JWT_SECRET válido NO arrancamos. Antes caía a un
+    // literal hardcodeado ('INSECURE_DEFAULT_...') visible en el código → se
+    // podían FORJAR tokens admin. Mejor un crash claro que un server inseguro.
     if (secret.length < 16) {
-      JwtStrategy.logger.error(
-        'SECURITY ALERT: JWT_SECRET es muy corto o falta. Mínimo 32 chars. ' +
-        'Genera con `openssl rand -base64 48` y reinicia.',
+      throw new Error(
+        'FATAL: JWT_SECRET falta o es muy corto (mínimo 16, recomendado ≥32 chars). ' +
+        'Generá con `openssl rand -base64 48` y reiniciá.',
       );
-    } else if (secret.length < 32) {
+    }
+    if (secret.length < 32) {
       JwtStrategy.logger.warn(
         `JWT_SECRET tiene solo ${secret.length} chars. Recomendado ≥32.`,
       );
     }
-    // Fallback solo si está totalmente vacío — esto NO es seguro pero
-    // permite que el server arranque y el admin lo arregle.
-    const effective = secret.length >= 16 ? secret : 'INSECURE_DEFAULT_PLEASE_SET_JWT_SECRET';
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
-      secretOrKey: effective,
+      secretOrKey: secret,
       ignoreExpiration: false,
+      algorithms: ['HS256'], // pin del algoritmo → evita alg-confusion
     });
 
     // Si la última rotación fue hace >90 días → warning en logs

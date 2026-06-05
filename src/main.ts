@@ -27,18 +27,26 @@ async function bootstrap() {
   // ─── gzip ──────────────────────────────────────────────────────────────────
   app.use(compression());
 
-  // ─── CORS: explicit whitelist in prod, open in dev ────────────────────────
-  const allowed = (process.env.CORS_ORIGINS ?? '*')
+  // ─── CORS: allowlist ESTRICTA en prod, abierto en dev ─────────────────────
+  // SIN fallback a '*': antes, si CORS_ORIGINS quedaba vacío, se reflejaba
+  // CUALQUIER origen CON credentials → robo cross-origin. Ahora prod falla
+  // cerrado (solo los orígenes de CORS_ORIGINS). Las apps nativas (APK) NO
+  // mandan header Origin → pasan por la rama `!origin`.
+  const allowed = (process.env.CORS_ORIGINS ?? '')
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean);
+  if (isProd && allowed.length === 0) {
+    logger.warn('CORS_ORIGINS vacío en prod → ningún origen web permitido (solo apps nativas).');
+  }
 
   app.enableCors({
     origin: isProd
       ? (origin, cb) => {
-          // Same-origin requests (no Origin header) → allow (mobile apps, curl)
+          // Sin Origin (apps nativas / curl / same-origin) → permitido.
           if (!origin) return cb(null, true);
-          if (allowed.includes('*') || allowed.includes(origin)) return cb(null, true);
+          // Allowlist estricta — ya NO aceptamos '*'.
+          if (allowed.includes(origin)) return cb(null, true);
           return cb(new Error(`CORS blocked: ${origin}`), false);
         }
       : '*',

@@ -124,10 +124,13 @@ export class AdminService {
   }
 
   async resetPassword(userId: string, newPassword: string) {
-    if (!newPassword || newPassword.length < 6) {
-      throw new BadRequestException('Password must be at least 6 characters');
+    // Misma política que signup / cambio propio: min 8 + letra + número, y
+    // bcrypt cost 12 (antes era min 6 + cost 10 → más débil que el resto).
+    if (!newPassword || newPassword.length < 8 ||
+        !/[a-zA-Z]/.test(newPassword) || !/[0-9]/.test(newPassword)) {
+      throw new BadRequestException('La contraseña debe tener mínimo 8 caracteres, con al menos una letra y un número');
     }
-    const hashed = await bcrypt.hash(newPassword, 10);
+    const hashed = await bcrypt.hash(newPassword, 12);
     const updated = await this.prisma.user.update({
       where: { id: userId },
       data: { password: hashed, updated_at: new Date() },
