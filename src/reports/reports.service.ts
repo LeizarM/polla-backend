@@ -539,7 +539,12 @@ export class ReportsService {
     }
 
     return new Promise((resolve, reject) => {
-      const doc = new PDFDocument({ size: 'LETTER', layout: 'landscape', margin: 40 });
+      // La página crece a lo ANCHO para que TODAS las jornadas entren en UNA
+      // sola tabla, sin cortarse ni paginar horizontalmente. (fixedW=232:
+      // pos 32 + nombre 130 + ganado 70; mdColW=56 por jornada). Mínimo 792
+      // (= landscape letter) para torneos con pocas jornadas.
+      const pageW = Math.max(792, 80 + 232 + matchdays.length * 56);
+      const doc = new PDFDocument({ size: [pageW, 612], margin: 40 });
       const chunks: Buffer[] = [];
       doc.on('data', (chunk: Buffer) => chunks.push(chunk));
       doc.on('end', () => resolve(Buffer.concat(chunks)));
@@ -581,9 +586,9 @@ export class ReportsService {
       const posW      = 32;
       const nameW     = 130;
       const ganadoW   = 70;
-      const pageWAvail = doc.page.width - 80; // márgenes 40px a cada lado
       const fixedW    = posW + nameW + ganadoW;
-      const mdPerPage = Math.max(1, Math.floor((pageWAvail - fixedW) / mdColW));
+      // TODAS las jornadas en un solo "chunk" → una sola tabla en la página ancha.
+      const mdPerPage = Math.max(1, matchdays.length);
 
       // Chunks de matchdays — cada chunk va en una página horizontal nueva
       // Renombrado a `mdChunks` para no chocar con `chunks: Buffer[]` del doc stream
