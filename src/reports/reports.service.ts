@@ -441,7 +441,12 @@ export class ReportsService {
       u.totalPrize   += Number(t.prize_won ?? 0);
     }
 
-    const ranking = Array.from(userMap.entries()).map(([uid, u]) => ({ uid, ...u })).sort((a, b) => b.totalCorrect - a.totalCorrect || b.totalPrize - a.totalPrize);
+    const ranking = Array.from(userMap.entries()).map(([uid, u]) => ({ uid, ...u }))
+      .sort((a, b) =>
+        b.totalPrize - a.totalPrize ||          // 1º mayor dinero
+        b.totalCorrect - a.totalCorrect ||      // 2º más aciertos
+        (a.full_name ?? '').localeCompare(b.full_name ?? '', 'es'), // 3º alfabético
+      );
 
     const openMatchdays = matchdays.filter(m => m.status === 'open');
     const pendingByMatchday: Record<string, { full_name: string; username: string }[]> = {};
