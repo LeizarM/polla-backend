@@ -527,7 +527,12 @@ export class ReportsService {
     const ranking = Array.from(userMap.entries())
       .map(([uid, u]) => ({ uid, ...u }))
       // Ordenamos por dinero (ya que ahora mostramos dinero), de mayor a menor.
-      .sort((a, b) => b.totalPrize - a.totalPrize || b.totalCorrect - a.totalCorrect);
+      // Orden: más dinero primero, luego más aciertos, luego alfabético (es).
+      .sort((a, b) =>
+        b.totalPrize - a.totalPrize ||
+        b.totalCorrect - a.totalCorrect ||
+        (a.full_name ?? '').localeCompare(b.full_name ?? '', 'es'),
+      );
 
     return new Promise((resolve, reject) => {
       // La página crece a lo ANCHO para que TODAS las jornadas entren en UNA
@@ -627,8 +632,8 @@ export class ReportsService {
           const mdValues = chunk.mds.map(md => {
             const correct = u.perMatchday.get(md.id);
             const prize   = u.perMatchdayPrize.get(md.id) ?? 0;
-            // Sin ticket en esa jornada → "NA" (No Apostó)
-            if (correct === undefined) return 'NA';
+            // Sin ticket en esa jornada → guión
+            if (correct === undefined) return '-';
             // Detectar si ganó la jornada (más aciertos del grupo)
             const isWinner = correct === (maxByMd.get(md.id) ?? -1) && correct > 0;
             // Si ganó algo de dinero, mostramos el monto; sino "0"
