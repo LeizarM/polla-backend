@@ -529,22 +529,16 @@ export class ReportsService {
       // Ordenamos por dinero (ya que ahora mostramos dinero), de mayor a menor.
       .sort((a, b) => b.totalPrize - a.totalPrize || b.totalCorrect - a.totalCorrect);
 
-    const openMatchdays = matchdays.filter(m => m.status === 'open');
-    const pendingByMatchday = new Map<string, { full_name: string; username: string }[]>();
-    for (const md of openMatchdays) {
-      const ticketUserIds = new Set(allTickets.filter(t => t.matchday_id === md.id).map(t => t.user_id));
-      const pending = participants.filter(p => !ticketUserIds.has(p.user_id))
-        .map(p => ({ full_name: p.user?.full_name ?? '-', username: p.user?.username ?? '-' }));
-      if (pending.length > 0) pendingByMatchday.set(md.id, pending);
-    }
-
     return new Promise((resolve, reject) => {
       // La página crece a lo ANCHO para que TODAS las jornadas entren en UNA
       // sola tabla, sin cortarse ni paginar horizontalmente. (fixedW=232:
       // pos 32 + nombre 130 + ganado 70; mdColW=56 por jornada). Mínimo 792
       // (= landscape letter) para torneos con pocas jornadas.
       const pageW = Math.max(792, 80 + 232 + matchdays.length * 56);
-      const doc = new PDFDocument({ size: [pageW, 612], margin: 40 });
+      // Alto dinámico: la página crece hacia ABAJO según la cantidad de
+      // participantes → TODO entra en UNA sola página (no se pagina vertical).
+      const pageH = Math.max(612, 380 + ranking.length * 21);
+      const doc = new PDFDocument({ size: [pageW, pageH], margin: 40 });
       const chunks: Buffer[] = [];
       doc.on('data', (chunk: Buffer) => chunks.push(chunk));
       doc.on('end', () => resolve(Buffer.concat(chunks)));
@@ -633,8 +627,8 @@ export class ReportsService {
           const mdValues = chunk.mds.map(md => {
             const correct = u.perMatchday.get(md.id);
             const prize   = u.perMatchdayPrize.get(md.id) ?? 0;
-            // Sin ticket en esa jornada → guión
-            if (correct === undefined) return '-';
+            // Sin ticket en esa jornada → "NA" (No Apostó)
+            if (correct === undefined) return 'NA';
             // Detectar si ganó la jornada (más aciertos del grupo)
             const isWinner = correct === (maxByMd.get(md.id) ?? -1) && correct > 0;
             // Si ganó algo de dinero, mostramos el monto; sino "0"
@@ -671,26 +665,6 @@ export class ReportsService {
           doc.y = legendY + 16;
         }
       });
-
-      // Pending users
-      if (pendingByMatchday.size > 0) {
-        doc.moveDown(0.4);
-        this.drawSectionTitle(doc, 'Usuarios que No Han Apostado', C.danger);
-        for (const md of openMatchdays) {
-          const pending = pendingByMatchday.get(md.id);
-          if (!pending || pending.length === 0) continue;
-          doc.fontSize(10).font('Helvetica-Bold').fillColor(C.primaryDk)
-            .text(`${md.name} `, { continued: true })
-            .fontSize(8).font('Helvetica').fillColor(C.muted)
-            .text(`(${new Date(md.date).toLocaleDateString('es-MX')}) - ${pending.length} pendiente${pending.length === 1 ? '' : 's'}`);
-          doc.fontSize(8).font('Helvetica').fillColor(C.text);
-          // Privacidad: sin (@usuario) en el listado de pendientes.
-          pending.forEach((p, i) => {
-            doc.text(`   ${i + 1}.  ${p.full_name}`);
-          });
-          doc.moveDown(0.3);
-        }
-      }
 
       this.drawFooter(doc);
       doc.end();
