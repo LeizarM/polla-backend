@@ -18,28 +18,32 @@ export class MatchdaysService {
       ...(status && { status }),
     };
 
-    // Visibilidad para apostar: una jornada aparece desde 1 día ANTES de su
-    // fecha. Ocultamos las que faltan más de 1 día. Las pasadas/de hoy/mañana
-    // siguen visibles (el status maneja las ya resueltas).
-    //   visible ⇔ date <= ahora + 1 día
+    // Ventana de fechas POR DÍA, en HORA DE BOLIVIA (UTC-4). Regla:
+    //   - La jornada del día D se ve 1 día ANTES (D-1) y el mismo día (D).
+    //   - Desde D+1 (pasó el día) ya NO aparece en la lista de apuestas.
+    //   - Es por FECHA, no por la hora de los partidos → visible TODO el día D.
+    //   Ej.: jornada 11/06 → visible 10/06 y 11/06, fuera el 12/06.
     //
-    // SEGURIDAD: para usuarios normales la ventana se FUERZA acá en el server
-    // (no depende del query param `upcoming` que manda el front). Así un usuario
-    // no puede listar jornadas futuras llamando la API sin el parámetro. El
-    // admin SÍ ve todas (las vistas de gestión no pasan upcoming).
+    // "hoy" y "mañana" como fechas (medianoche), en el mismo formato que el campo
+    // @db.Date (que guarda el día calendario boliviano como medianoche UTC).
+    const nowBo = new Date(Date.now() - 4 * 60 * 60 * 1000); // instante → reloj de pared Bolivia
+    const hoyBo    = new Date(Date.UTC(nowBo.getUTCFullYear(), nowBo.getUTCMonth(), nowBo.getUTCDate()));
+    const mananaBo = new Date(Date.UTC(nowBo.getUTCFullYear(), nowBo.getUTCMonth(), nowBo.getUTCDate() + 1));
+
+    // Límite SUPERIOR (apostar + historial + cualquier no-admin): nunca mostrar
+    // jornadas a más de 1 día. SEGURIDAD: se fuerza acá en el server para
+    // no-admins (no depende del query param `upcoming`). El admin (sin upcoming)
+    // ve todas en sus vistas de gestión.
     if (upcoming || userRole !== 'admin') {
-      const cutoff = new Date(Date.now() + 24 * 60 * 60 * 1000);
-      where.date = { lte: cutoff };
+      where.date = { lte: mananaBo };
     }
 
-    // Vista "PARA APOSTAR" (status=open + upcoming): ocultar las jornadas que ya
-    // pasaron por completo (TODOS sus partidos ya iniciaron). Siguen siendo
-    // 'open' hasta que el admin las resuelve, pero ya no son apostables → no
-    // tiene sentido mostrarlas en la lista de apuestas.
-    // OJO: el HISTORIAL (sin status) y la gestión admin (sin upcoming) NO aplican
-    // este filtro, así que las jornadas pasadas/resueltas siguen visibles ahí.
+    // Vista "PARA APOSTAR" (status=open + upcoming): además aplicamos el límite
+    // INFERIOR → ventana [hoy, mañana]. Así, pasado el día de la jornada, ya no
+    // aparece para apostar. El HISTORIAL (sin status) y la gestión admin (sin
+    // upcoming) NO aplican este límite → ahí siguen viéndose las pasadas.
     if (status === 'open' && upcoming) {
-      where.matches = { some: { match_date: { gt: new Date() } } };
+      where.date = { gte: hoyBo, lte: mananaBo };
     }
 
     // Regular users only see matchdays from their enrolled (approved) tournaments
