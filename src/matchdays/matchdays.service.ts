@@ -32,6 +32,16 @@ export class MatchdaysService {
       where.date = { lte: cutoff };
     }
 
+    // Vista "PARA APOSTAR" (status=open + upcoming): ocultar las jornadas que ya
+    // pasaron por completo (TODOS sus partidos ya iniciaron). Siguen siendo
+    // 'open' hasta que el admin las resuelve, pero ya no son apostables → no
+    // tiene sentido mostrarlas en la lista de apuestas.
+    // OJO: el HISTORIAL (sin status) y la gestión admin (sin upcoming) NO aplican
+    // este filtro, así que las jornadas pasadas/resueltas siguen visibles ahí.
+    if (status === 'open' && upcoming) {
+      where.matches = { some: { match_date: { gt: new Date() } } };
+    }
+
     // Regular users only see matchdays from their enrolled (approved) tournaments
     if (userId && userRole !== 'admin') {
       const myParts = await this.prisma.tournament_participant.findMany({
