@@ -274,7 +274,12 @@ export class ReportsService {
     const appSettings = await this.getAppSettings();
 
     return new Promise((resolve, reject) => {
-      const doc = new PDFDocument({ size: 'LETTER', margin: 40 });
+      // Alto DINÁMICO: la página crece hacia abajo para que entren TODAS las filas
+      // (los que apostaron + los que NO apostaron) sin cortarse al cruzar el borde
+      // de página. 612 = ancho LETTER (vertical); el problema era el alto fijo (792).
+      const rowsTotal = (report?.users_bet?.length ?? 0) + (report?.pending_users?.length ?? 0);
+      const pageH = Math.max(792, 500 + rowsTotal * 21);
+      const doc = new PDFDocument({ size: [612, pageH], margin: 40 });
       const chunks: Buffer[] = [];
       doc.on('data', (chunk: Buffer) => chunks.push(chunk));
       doc.on('end', () => resolve(Buffer.concat(chunks)));
@@ -696,7 +701,11 @@ export class ReportsService {
     }
 
     return new Promise((resolve, reject) => {
-      const doc = new PDFDocument({ size: 'LETTER', layout: 'landscape', margin: 40 });
+      // Alto DINÁMICO (landscape, ancho 792) → TODAS las filas (apostaron + no
+      // apostaron) entran sin cortarse al cruzar el borde de página.
+      const pollaRows = (report?.bets?.length ?? 0) + pendingUsers.length;
+      const pageHpf = Math.max(612, 420 + pollaRows * 21);
+      const doc = new PDFDocument({ size: [792, pageHpf], margin: 40 });
       const chunks: Buffer[] = [];
       doc.on('data', (chunk: Buffer) => chunks.push(chunk));
       doc.on('end', () => resolve(Buffer.concat(chunks)));
