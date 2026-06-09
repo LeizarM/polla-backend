@@ -19,7 +19,7 @@ export class AdminService {
         }
       : {};
 
-    return this.prisma.user.findMany({
+    const users = await this.prisma.user.findMany({
       where,
       orderBy: { created_at: 'desc' },
       select: {
@@ -33,6 +33,20 @@ export class AdminService {
         updated_at: true,
       },
     });
+
+    // Total GANADO por usuario = suma de prize_won de sus TICKETS (solo jornadas,
+    // NO incluye Polla Final). Agregación en la DB (groupBy) → eficiente y en
+    // "tiempo real": al resolver una jornada se actualiza prize_won y este total
+    // refleja el valor al momento de cada consulta (la lista se re-fetchea).
+    const sums = await this.prisma.ticket.groupBy({
+      by: ['user_id'],
+      _sum: { prize_won: true },
+    });
+    const wonByUser = new Map<string, number>(
+      sums.map((s) => [s.user_id, Number(s._sum.prize_won ?? 0)]),
+    );
+
+    return users.map((u) => ({ ...u, total_won: wonByUser.get(u.id) ?? 0 }));
   }
 
   async getStats() {
