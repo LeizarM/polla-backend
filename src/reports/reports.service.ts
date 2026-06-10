@@ -295,7 +295,7 @@ export class ReportsService {
         { label: 'Apuesta',    value: `${cur} ${report?.matchday?.bet_per_matchday ?? 0}`,  color: C.primary },
         { label: 'Apostaron',  value: String(report?.stats?.users_bet ?? 0),                  color: C.success },
         { label: 'Pendientes', value: String(report?.stats?.users_pending ?? 0),              color: C.warning },
-        { label: 'Pozo total', value: `${cur} ${Number(report?.stats?.pool_collected ?? 0).toFixed(2)}`, color: C.gold },
+        { label: 'Pozo total', value: `${cur} ${Number(report?.stats?.expected_pool ?? 0).toFixed(2)}`, color: C.gold },
       ]);
 
       // Users who bet
