@@ -49,4 +49,14 @@ export class TournamentParticipantsController {
   async updateStatus(@Param('id') id: string, @Body() dto: UpdateParticipationStatusDto) {
     return this.service.updateStatus(id, dto.status);
   }
+
+  // ⚠️ SOLO ADMIN — inscribir (aprobado) a OTRO usuario por user_id. Sirve para
+  // sumar usuarios ACTIVOS que no solicitaron inscripción (todos deben estar en
+  // el pozo). Distinto de @Post() que auto-inscribe al propio admin.
+  @Post('admin/enroll')
+  @UseGuards(AdminGuard)
+  @ApiOperation({ summary: 'Admin: inscribir (aprobado) a un usuario en el torneo' })
+  async adminEnroll(@Body() dto: { tournament_id: string; user_id: string }) {
+    return this.service.adminEnroll(dto.tournament_id, dto.user_id);
+  }
 }

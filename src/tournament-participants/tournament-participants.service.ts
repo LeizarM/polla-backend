@@ -36,6 +36,35 @@ export class TournamentParticipantsService {
     });
   }
 
+  /** Admin: inscribe (aprobado) a un usuario puntual por su id. Sirve para sumar
+   *  usuarios ACTIVOS que no solicitaron inscripción (ej: todos deben estar en el
+   *  pozo). Rechaza usuarios bloqueados/inactivos. Idempotente si ya está aprobado. */
+  async adminEnroll(tournamentId: string, targetUserId: string) {
+    const tournament = await this.prisma.tournament.findUnique({ where: { id: tournamentId } });
+    if (!tournament) throw new NotFoundException('Torneo no encontrado');
+    const u = await this.prisma.user.findUnique({
+      where: { id: targetUserId },
+      select: { id: true, status: true },
+    });
+    if (!u) throw new NotFoundException('Usuario no encontrado');
+    if (u.status !== 'active') {
+      throw new BadRequestException('No se puede inscribir a un usuario bloqueado/inactivo');
+    }
+    const existing = await this.prisma.tournament_participant.findUnique({
+      where: { user_id_tournament_id: { user_id: targetUserId, tournament_id: tournamentId } },
+    });
+    if (existing) {
+      if (existing.status === 'approved') throw new ConflictException('El usuario ya está inscrito');
+      return this.prisma.tournament_participant.update({
+        where: { id: existing.id },
+        data: { status: 'approved', updated_at: new Date() },
+      });
+    }
+    return this.prisma.tournament_participant.create({
+      data: { user_id: targetUserId, tournament_id: tournamentId, status: 'approved' },
+    });
+  }
+
   /** Get user's participations */
   async findMyParticipations(userId: string) {
     const participations = await this.prisma.tournament_participant.findMany({
