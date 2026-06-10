@@ -368,11 +368,12 @@ export class MatchdaysService {
     }
 
     const betPerMatchday = Number(matchday.tournament?.bet_per_matchday ?? 0);
-    // Pool = ACTUAL bettors × bet. Non-bettors don't contribute (their ghost
-    // tickets have amount_bet=0). Distributing the full inscritos × bet would
-    // over-pay winners with money that was never collected.
-    const actualBettors = participants.length - usersWithoutTicket.length;
-    const pool = betPerMatchday * actualBettors;
+    // REGLA DE NEGOCIO (decisión del organizador): el pozo es de TODOS los
+    // inscritos aprobados, apuesten o no. Al inscribirse al torneo ya "entran" al
+    // pozo (los Bs se cobran por fuera de la app). El pozo se reparte entre los
+    // GANADORES (los de más aciertos); un inscrito que no apostó igual aporta su
+    // parte. (Antes el pozo era solo bettors × bet — cambiado a pedido.)
+    const pool = betPerMatchday * participants.length;
 
     // Mark picks correct/incorrect
     await this.prisma.$executeRaw`
