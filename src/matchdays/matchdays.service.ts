@@ -46,28 +46,49 @@ export class MatchdaysService {
       where.date = { gte: hoyBo, lte: mananaBo };
     }
 
-    // Regular users only see matchdays from their enrolled (approved) tournaments
+    // Regular users only see matchdays from their enrolled (approved) tournaments.
+    // enrolledAtByTournament: cuándo se inscribió el usuario a cada torneo, para
+    // OCULTARLE las jornadas que ya estaban en juego antes de su inscripción.
+    let enrolledAtByTournament: Record<string, Date> | null = null;
     if (userId && userRole !== 'admin') {
       const myParts = await this.prisma.tournament_participant.findMany({
         where: { user_id: userId, status: 'approved' },
-        select: { tournament_id: true },
+        select: { tournament_id: true, created_at: true },
       });
       if (myParts.length === 0) return [];
+      enrolledAtByTournament = {};
+      for (const p of myParts) enrolledAtByTournament[p.tournament_id] = p.created_at;
       if (!tournament_id) {
         where.tournament_id = { in: myParts.map(p => p.tournament_id) };
       }
     }
 
-    const matchdays = await this.prisma.matchday.findMany({
+    const rawMatchdays = await this.prisma.matchday.findMany({
       where,
       include: {
         tournament: true,
         // Include match count via Prisma's _count selector so the frontend
         // can show "N partidos" without loading the full match array.
         _count: { select: { matches: true } },
+        // Último partido de la jornada (fecha máx) → para saber si la jornada ya
+        // estaba en juego cuando el usuario se inscribió.
+        matches: { orderBy: { match_date: 'desc' }, take: 1, select: { match_date: true } },
       },
       orderBy: { date: 'desc' },
     });
+
+    // Inscrito tardío NO ve jornadas pasadas: si se inscribió DESPUÉS de que
+    // arrancó el último partido de la jornada, ya no la ve (igual la "hereda" en
+    // el pozo vía ghost ticket si esa jornada se resuelve después — esa plata va a
+    // los ganadores de esa jornada). Los inscritos a tiempo ven todo su historial.
+    const matchdays = enrolledAtByTournament
+      ? rawMatchdays.filter(m => {
+          const enrolledAt = enrolledAtByTournament![m.tournament_id];
+          const lastMatch = m.matches?.[0]?.match_date;
+          if (!enrolledAt || !lastMatch) return true; // sin dato → no ocultar
+          return new Date(enrolledAt).getTime() <= new Date(lastMatch).getTime();
+        })
+      : rawMatchdays;
 
     if (matchdays.length === 0) return [];
 
@@ -84,14 +105,18 @@ export class MatchdaysService {
     const countMap: Record<string, number> = {};
     participantCounts.forEach((p: any) => { countMap[p.tournament_id] = Number(p.count); });
 
-    return matchdays.map(m => ({
-      ...m,
-      total_pool: Number(m.total_pool),
-      expected_pool: Number(m.tournament?.bet_per_matchday ?? 0) * (countMap[m.tournament_id] ?? 0),
-      participant_count: countMap[m.tournament_id] ?? 0,
-      // Expose match count directly for easier client access
-      match_count: (m as any)._count?.matches ?? 0,
-    }));
+    return matchdays.map((md) => {
+      // Quitamos `matches` (solo lo usamos arriba para el filtro de inscritos tardíos)
+      const { matches: _omit, ...m } = md as any;
+      return {
+        ...m,
+        total_pool: Number(m.total_pool),
+        expected_pool: Number(m.tournament?.bet_per_matchday ?? 0) * (countMap[m.tournament_id] ?? 0),
+        participant_count: countMap[m.tournament_id] ?? 0,
+        // Expose match count directly for easier client access
+        match_count: m._count?.matches ?? 0,
+      };
+    });
   }
 
   async findOne(id: string) {
