@@ -305,20 +305,21 @@ export class ReportsService {
         const headers = ['#', 'Nombre', 'Aciertos', 'Premio', 'Estado'];
         const widths = [30, 250, 60, 70, 70];
         this.drawGridHeader(doc, headers, widths);
-        (report?.users_bet ?? []).forEach((u: any, i: number) => {
+        // Orden alfabetico por nombre (locale es → respeta acentos/ñ). Los
+        // ganadores empatan y reparten parejo (no hay 1°/2°/3°), asi que TODOS
+        // llevan el mismo resaltado de ganador, no un podio por posicion.
+        const betSorted = [...(report?.users_bet ?? [])].sort((a: any, b: any) =>
+          (a?.full_name ?? '').localeCompare(b?.full_name ?? '', 'es', { sensitivity: 'base' }),
+        );
+        betSorted.forEach((u: any, i: number) => {
           const isWinner = u?.status === 'won';
-          // Top 3 winners get podium tint via row color (no emoji icons — PDFKit
-          // Helvetica doesn't render Unicode emojis cleanly).
-          const highlight = isWinner
-            ? (i === 0 ? 'gold' : i === 1 ? 'silver' : i === 2 ? 'bronze' : (true as any))
-            : undefined;
           this.drawGridRow(doc, [
             String(i + 1),
             u?.full_name ?? '-',
             String(u?.total_correct ?? '-'),
             (u?.prize_won ?? 0) > 0 ? `${cur} ${Number(u.prize_won).toFixed(2)}` : '-',
             u?.status === 'won' ? 'GANADOR' : (u?.status ?? '-'),
-          ], widths, i, highlight as any);
+          ], widths, i, isWinner ? true : undefined);
         });
       } else {
         doc.fontSize(9).font('Helvetica').fillColor(C.muted).text('No hay apuestas registradas en esta jornada');
@@ -332,7 +333,10 @@ export class ReportsService {
         const pHeaders = ['#', 'Nombre'];
         const pWidths = [40, 410];
         this.drawGridHeader(doc, pHeaders, pWidths);
-        (report?.pending_users ?? []).forEach((u: any, i: number) => {
+        const pendingSorted = [...(report?.pending_users ?? [])].sort((a: any, b: any) =>
+          (a?.full_name ?? '').localeCompare(b?.full_name ?? '', 'es', { sensitivity: 'base' }),
+        );
+        pendingSorted.forEach((u: any, i: number) => {
           this.drawGridRow(doc, [String(i + 1), u?.full_name ?? '-'], pWidths, i);
         });
       }
