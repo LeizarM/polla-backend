@@ -20,6 +20,36 @@ export class UsersService {
     return sanitizeUser(user);
   }
 
+  // ── Avatar (foto de perfil) ─────────────────────────────────────────────────
+  /** Guarda el avatar (data URI base64, ya comprimido en el cliente). Valida tipo
+   *  y tamaño. Devuelve la URL nueva con cache-bust. */
+  async setAvatar(userId: string, dataUri: string) {
+    if (!dataUri || typeof dataUri !== 'string') {
+      throw new BadRequestException('Imagen inválida');
+    }
+    const m = /^data:(image\/(?:png|jpe?g|webp));base64,(.+)$/i.exec(dataUri.trim());
+    if (!m) throw new BadRequestException('Formato no soportado (usa JPG, PNG o WEBP)');
+    const mime = m[1].toLowerCase();
+    const buf = Buffer.from(m[2], 'base64');
+    if (buf.length === 0) throw new BadRequestException('Imagen vacía');
+    if (buf.length > 500 * 1024) throw new BadRequestException('La imagen es muy grande (máx 500KB)');
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { avatar: buf, avatar_mime: mime, avatar_updated_at: new Date() },
+    });
+    return { ok: true, avatar_url: `/api/users/${userId}/avatar?v=${Date.now()}` };
+  }
+
+  /** Lee el avatar binario para servirlo. null si no tiene. */
+  async getAvatar(userId: string): Promise<{ data: Buffer; mime: string } | null> {
+    const u = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { avatar: true, avatar_mime: true },
+    });
+    if (!u?.avatar || !u?.avatar_mime) return null;
+    return { data: Buffer.from(u.avatar as any), mime: u.avatar_mime };
+  }
+
   async updateProfile(userId: string, dto: UpdateProfileDto) {
     // ── Username SÍ debe ser único (incluso en update) ──────────────────
     if (dto.username) {
