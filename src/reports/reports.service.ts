@@ -106,7 +106,9 @@ export class ReportsService {
     const titleY = barH + 18;
     doc.fontSize(18).font('Helvetica-Bold').fillColor(C.primaryDk)
       .text(title, 40, titleY, { width: W - 80, align: 'center' });
-    if (subtitle) {
+    if (subtitle && subtitle !== appTitle) {
+      // Solo mostramos el subtítulo (nombre del torneo) si NO repite el título
+      // grande del header (app_title). Si son iguales, era redundante.
       // Use the next-line Y from the title (lineGap = ~6)
       const subY = doc.y + 2;
       doc.fontSize(12).font('Helvetica').fillColor(C.muted)
@@ -302,8 +304,8 @@ export class ReportsService {
       this.drawSectionTitle(doc, 'Participantes que Apostaron', C.success);
       if ((report?.users_bet?.length ?? 0) > 0) {
         // Privacidad: NO mostramos usuario (@) ni telefono en los reportes.
-        const headers = ['#', 'Nombre', 'Aciertos', 'Premio', 'Estado'];
-        const widths = [30, 250, 60, 70, 70];
+        const headers = ['#', 'Nombre', 'Aciertos', 'Premio'];
+        const widths = [30, 290, 70, 90];
         this.drawGridHeader(doc, headers, widths);
         // Orden alfabetico por nombre (locale es → respeta acentos/ñ). Los
         // ganadores empatan y reparten parejo (no hay 1°/2°/3°), asi que TODOS
@@ -318,7 +320,6 @@ export class ReportsService {
             u?.full_name ?? '-',
             String(u?.total_correct ?? '-'),
             (u?.prize_won ?? 0) > 0 ? `${cur} ${Number(u.prize_won).toFixed(2)}` : '-',
-            u?.status === 'won' ? 'GANADOR' : (u?.status ?? '-'),
           ], widths, i, isWinner ? true : undefined);
         });
       } else {
