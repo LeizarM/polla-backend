@@ -41,6 +41,10 @@ export class AvatarController {
       // Override del no-store global: el avatar SÍ se cachea (cambia poco). El ?v=
       // del avatar_url cache-bustea cuando el usuario cambia la foto.
       'Cache-Control': 'public, max-age=60',
+      // Override del CORP `same-origin` de Helmet: el frontend vive en OTRO dominio
+      // (impexpap.com) que el backend (esppapel.com), y el <img> lo carga cross-origin.
+      // Sin esto el navegador bloquea la imagen. Solo este recurso público se relaja.
+      'Cross-Origin-Resource-Policy': 'cross-origin',
     });
     res.send(av.data);
   }
