@@ -28,6 +28,17 @@ async function bootstrap() {
   // ─── gzip ──────────────────────────────────────────────────────────────────
   app.use(compression());
 
+  // ─── Anti-caché de respuestas API ─────────────────────────────────────────
+  // Safari iOS (y proxies) cacheaban GETs como /api/auth/me SIN headers → al
+  // recargar devolvían datos del usuario VIEJO. `no-store` evita que cualquier
+  // capa HTTP los guarde. El backend solo sirve /api + /health (el frontend lo
+  // sirve Nginx), así que no-store global acá es correcto. Endpoints que SÍ
+  // quieran cachear (ej. avatar) seteen su propio Cache-Control en el handler.
+  app.use((_req: any, res: any, next: any) => {
+    res.setHeader('Cache-Control', 'no-store');
+    next();
+  });
+
   // ─── CORS: allowlist ESTRICTA en prod, abierto en dev ─────────────────────
   // SIN fallback a '*': antes, si CORS_ORIGINS quedaba vacío, se reflejaba
   // CUALQUIER origen CON credentials → robo cross-origin. Ahora prod falla
