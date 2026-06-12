@@ -125,10 +125,42 @@ export class ReportsService {
     doc.y = lineY + 12;
   }
 
-  private drawStatsBox(doc: PDFKit.PDFDocument, stats: { label: string; value: string; color?: string }[]) {
+  /**
+   * Ícono vectorial simple, centrado en (cx, cy). PDFKit usa Helvetica, que NO
+   * tiene glifos de íconos, así que los dibujamos a mano con formas.
+   */
+  private drawStatIcon(doc: PDFKit.PDFDocument, type: string, cx: number, cy: number, color: string) {
+    const r = 7;
+    doc.save();
+    if (type === 'coin') {
+      doc.circle(cx, cy, r).lineWidth(1.4).stroke(color);
+      doc.circle(cx, cy, r * 0.45).lineWidth(1).stroke(color);
+    } else if (type === 'users') {
+      doc.circle(cx, cy - r * 0.42, r * 0.4).fill(color);
+      doc.path(`M ${cx - r * 0.78} ${cy + r} Q ${cx} ${cy - r * 0.15} ${cx + r * 0.78} ${cy + r} Z`).fill(color);
+    } else if (type === 'clock') {
+      doc.circle(cx, cy, r).lineWidth(1.4).stroke(color);
+      doc.moveTo(cx, cy).lineTo(cx, cy - r * 0.55).lineWidth(1.2).stroke(color);
+      doc.moveTo(cx, cy).lineTo(cx + r * 0.45, cy + r * 0.12).lineWidth(1.2).stroke(color);
+    } else if (type === 'calendar') {
+      doc.roundedRect(cx - r * 0.85, cy - r * 0.65, r * 1.7, r * 1.45, 1.5).lineWidth(1.3).stroke(color);
+      doc.moveTo(cx - r * 0.85, cy - r * 0.2).lineTo(cx + r * 0.85, cy - r * 0.2).lineWidth(1).stroke(color);
+      doc.moveTo(cx - r * 0.4, cy - r * 0.9).lineTo(cx - r * 0.4, cy - r * 0.45).lineWidth(1.3).stroke(color);
+      doc.moveTo(cx + r * 0.4, cy - r * 0.9).lineTo(cx + r * 0.4, cy - r * 0.45).lineWidth(1.3).stroke(color);
+    } else if (type === 'trophy') {
+      doc.path(`M ${cx - r * 0.65} ${cy - r * 0.75} L ${cx + r * 0.65} ${cy - r * 0.75} L ${cx + r * 0.4} ${cy + r * 0.1} L ${cx - r * 0.4} ${cy + r * 0.1} Z`).fill(color);
+      doc.rect(cx - r * 0.12, cy + r * 0.1, r * 0.24, r * 0.42).fill(color);
+      doc.rect(cx - r * 0.5, cy + r * 0.52, r, r * 0.22).fill(color);
+      doc.path(`M ${cx - r * 0.65} ${cy - r * 0.6} C ${cx - r * 1.1} ${cy - r * 0.5} ${cx - r * 0.95} ${cy} ${cx - r * 0.5} ${cy - r * 0.15}`).lineWidth(1.2).stroke(color);
+      doc.path(`M ${cx + r * 0.65} ${cy - r * 0.6} C ${cx + r * 1.1} ${cy - r * 0.5} ${cx + r * 0.95} ${cy} ${cx + r * 0.5} ${cy - r * 0.15}`).lineWidth(1.2).stroke(color);
+    }
+    doc.restore();
+  }
+
+  private drawStatsBox(doc: PDFKit.PDFDocument, stats: { label: string; value: string; color?: string; icon?: string }[]) {
     const boxX = 40;
     const boxW = doc.page.width - 80;
-    const boxH = 56;
+    const boxH = 68;
     const y = doc.y;
 
     // Card background with subtle shadow effect (two layers)
@@ -143,15 +175,19 @@ export class ReportsService {
     stats.forEach((s, i) => {
       const cx = boxX + i * colW;
       const valueColor = s.color ?? C.primaryDk;
+      // Ícono vectorial arriba (si se especifica)
+      if (s.icon) {
+        this.drawStatIcon(doc, s.icon, cx + colW / 2, y + 16, valueColor);
+      }
       // Value (big number)
       doc.fontSize(15).font('Helvetica-Bold').fillColor(valueColor)
-        .text(s.value, cx + 6, y + 14, { width: colW - 12, align: 'center' });
+        .text(s.value, cx + 6, y + 28, { width: colW - 12, align: 'center' });
       // Label
       doc.fontSize(8).font('Helvetica').fillColor(C.muted)
-        .text(s.label.toUpperCase(), cx + 6, y + 36, { width: colW - 12, align: 'center', characterSpacing: 0.5 });
+        .text(s.label.toUpperCase(), cx + 6, y + 50, { width: colW - 12, align: 'center', characterSpacing: 0.5 });
       // Column divider (except first)
       if (i > 0) {
-        doc.moveTo(cx, y + 12).lineTo(cx, y + boxH - 8).lineWidth(0.5).stroke(C.borderSoft);
+        doc.moveTo(cx, y + 14).lineTo(cx, y + boxH - 8).lineWidth(0.5).stroke(C.borderSoft);
       }
     });
     doc.y = y + boxH + 14;
@@ -242,15 +278,19 @@ export class ReportsService {
     doc.fillColor(C.text);
   }
 
-  private drawSectionTitle(doc: PDFKit.PDFDocument, title: string, color = C.primary, _legacyIcon = '') {
-    // _legacyIcon kept for backwards compatibility but ignored — PDFKit Helvetica
-    // doesn't render Unicode emojis; we use a styled colored bar instead.
+  private drawSectionTitle(doc: PDFKit.PDFDocument, title: string, color = C.primary, icon = '') {
     doc.moveDown(0.5);
     const y = doc.y;
     // Colored left bar
     doc.rect(40, y + 2, 4, 16).fill(color);
+    // Ícono vectorial opcional antes del título (mismo set que el stats box).
+    let titleX = 50;
+    if (icon) {
+      this.drawStatIcon(doc, icon, 58, y + 9, color);
+      titleX = 74;
+    }
     doc.fontSize(13).font('Helvetica-Bold').fillColor(color)
-      .text(title, 50, y, { width: doc.page.width - 90 });
+      .text(title, titleX, y, { width: doc.page.width - 40 - titleX });
     doc.moveDown(0.35);
     doc.fillColor(C.text);
   }
@@ -294,14 +334,14 @@ export class ReportsService {
 
       // Stats box with semantic colors
       this.drawStatsBox(doc, [
-        { label: 'Apuesta',    value: `${cur} ${report?.matchday?.bet_per_matchday ?? 0}`,  color: C.primary },
-        { label: 'Apostaron',  value: String(report?.stats?.users_bet ?? 0),                  color: C.success },
-        { label: 'Pendientes', value: String(report?.stats?.users_pending ?? 0),              color: C.warning },
-        { label: 'Pozo total', value: `${cur} ${Number(report?.stats?.expected_pool ?? 0).toFixed(2)}`, color: C.gold },
+        { label: 'Apuesta',    value: `${cur} ${report?.matchday?.bet_per_matchday ?? 0}`,  color: C.primary, icon: 'coin' },
+        { label: 'Apostaron',  value: String(report?.stats?.users_bet ?? 0),                  color: C.success, icon: 'users' },
+        { label: 'Pendientes', value: String(report?.stats?.users_pending ?? 0),              color: C.warning, icon: 'clock' },
+        { label: 'Pozo total', value: `${cur} ${Number(report?.stats?.expected_pool ?? 0).toFixed(2)}`, color: C.gold, icon: 'trophy' },
       ]);
 
       // Users who bet
-      this.drawSectionTitle(doc, 'Participantes que Apostaron', C.success);
+      this.drawSectionTitle(doc, 'Participantes que Apostaron', C.success, 'users');
       if ((report?.users_bet?.length ?? 0) > 0) {
         // Privacidad: NO mostramos usuario (@) ni telefono en los reportes.
         const headers = ['#', 'Nombre', 'Aciertos', 'Premio'];
@@ -565,10 +605,10 @@ export class ReportsService {
       this.drawPdfHeader(doc, 'Reporte Acumulado por Jornada', tournament.name, appSettings.app_title);
 
       this.drawStatsBox(doc, [
-        { label: 'Apuesta/Jornada', value: `${cur2} ${Number(tournament.bet_per_matchday)}`, color: C.primary },
-        { label: 'Jornadas',        value: String(matchdays.length),                          color: C.accent },
-        { label: 'Participantes',   value: String(ranking.length),                            color: C.primaryDk },
-        { label: 'Pozo repartido',  value: `${cur2} ${formatMoney(totalPrizeAll)}`,             color: C.success },
+        { label: 'Apuesta/Jornada', value: `${cur2} ${Number(tournament.bet_per_matchday)}`, color: C.primary, icon: 'coin' },
+        { label: 'Jornadas',        value: String(matchdays.length),                          color: C.accent, icon: 'calendar' },
+        { label: 'Participantes',   value: String(ranking.length),                            color: C.primaryDk, icon: 'users' },
+        { label: 'Pozo repartido',  value: `${cur2} ${formatMoney(totalPrizeAll)}`,             color: C.success, icon: 'trophy' },
       ]);
 
       // Per-matchday winner detection (max aciertos per jornada)
@@ -612,7 +652,7 @@ export class ReportsService {
       // Si por alguna razón no hay jornadas, al menos un chunk vacío.
       if (mdChunks.length === 0) mdChunks.push({ start: 0, end: 0, mds: [] });
 
-      this.drawSectionTitle(doc, 'Tabla Acumulada (Dinero Ganado por Jornada)', C.primary);
+      this.drawSectionTitle(doc, 'Tabla Acumulada (Dinero Ganado por Jornada)', C.primary, 'trophy');
 
       mdChunks.forEach((chunk, chunkIdx) => {
         // Nueva página por cada chunk SALVO el primero (que va en la página actual)
@@ -736,7 +776,7 @@ export class ReportsService {
       }
 
       // Bets table
-      this.drawSectionTitle(doc, 'Apuestas de los Participantes');
+      this.drawSectionTitle(doc, 'Apuestas de los Participantes', C.primary, 'users');
       if ((report?.bets?.length ?? 0) > 0) {
         const headers = ['#', 'Nombre', 'Campeón', 'Subcampeón', '3er Lugar', '4to Lugar', 'Pts', 'Premio'];
         const colWidths = [30, 130, 105, 105, 95, 95, 40, 60];
