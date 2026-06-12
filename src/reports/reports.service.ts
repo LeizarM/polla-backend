@@ -312,7 +312,6 @@ export class ReportsService {
   /** Generate PDF for a single matchday report */
   async generateMatchdayPdf(matchdayId: string): Promise<Buffer> {
     const report = await this.matchdaysService.getReport(matchdayId);
-    const winners = await this.matchdaysService.getWinners(matchdayId);
     const appSettings = await this.getAppSettings();
 
     return new Promise((resolve, reject) => {
@@ -350,9 +349,14 @@ export class ReportsService {
         // Orden alfabetico por nombre (locale es → respeta acentos/ñ). Los
         // ganadores empatan y reparten parejo (no hay 1°/2°/3°), asi que TODOS
         // llevan el mismo resaltado de ganador, no un podio por posicion.
-        const betSorted = [...(report?.users_bet ?? [])].sort((a: any, b: any) =>
-          (a?.full_name ?? '').localeCompare(b?.full_name ?? '', 'es', { sensitivity: 'base' }),
-        );
+        // Orden: por ACIERTOS desc, luego PREMIO desc, y alfabético entre empates.
+        const betSorted = [...(report?.users_bet ?? [])].sort((a: any, b: any) => {
+          const corr = Number(b?.total_correct ?? 0) - Number(a?.total_correct ?? 0);
+          if (corr !== 0) return corr;
+          const prize = Number(b?.prize_won ?? 0) - Number(a?.prize_won ?? 0);
+          if (prize !== 0) return prize;
+          return (a?.full_name ?? '').localeCompare(b?.full_name ?? '', 'es', { sensitivity: 'base' });
+        });
         betSorted.forEach((u: any, i: number) => {
           const isWinner = u?.status === 'won';
           this.drawGridRow(doc, [
@@ -382,23 +386,8 @@ export class ReportsService {
         });
       }
 
-      // Winners callout box
-      if (winners?.winners?.length > 0) {
-        doc.moveDown(0.6);
-        const y = doc.y;
-        const W = doc.page.width;
-        // Gold callout box
-        doc.roundedRect(40, y, W - 80, 60, 8).fill(C.goldLt);
-        doc.rect(40, y, 4, 60).fill(C.gold);
-        doc.fontSize(13).font('Helvetica-Bold').fillColor(C.gold)
-          .text(`${winners?.winners?.length === 1 ? 'GANADOR' : 'GANADORES'} DE LA JORNADA`, 60, y + 10);
-        doc.fontSize(9).font('Helvetica').fillColor(C.text)
-          .text(`Maximo aciertos: ${winners?.max_correct ?? 0}  |  Premio por ganador: ${cur} ${Number(winners?.prize_per_winner ?? 0).toFixed(2)}`, 60, y + 30);
-        doc.fontSize(10).font('Helvetica-Bold').fillColor(C.primaryDk)
-          .text((winners?.winners ?? []).map((w: any) => `${w?.full_name ?? '-'}`).join('   |   '),
-                60, y + 44, { width: W - 100 });
-        doc.y = y + 70;
-      }
+      // (Footer de ganadores quitado a pedido — los ganadores ya se ven por el
+      //  orden de la tabla, el premio y el resaltado dorado de la fila.)
 
       this.drawFooter(doc);
       doc.end();
@@ -687,7 +676,7 @@ export class ReportsService {
             // Detectar si ganó la jornada (más aciertos del grupo)
             const isWinner = correct === (maxByMd.get(md.id) ?? -1) && correct > 0;
             // Si ganó algo de dinero, mostramos el monto; sino "0"
-            const moneyStr = prize > 0 ? `${cur2} ${formatMoney(prize)}` : '0';
+            const moneyStr = prize > 0 ? formatMoney(prize) : '0'; // sin "Bs" por celda (solo en GANADO)
             return isWinner ? `*${moneyStr}` : moneyStr;
           });
           const highlight: 'gold' | 'silver' | 'bronze' | undefined =
