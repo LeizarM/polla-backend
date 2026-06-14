@@ -248,13 +248,21 @@ export class MatchdaysService {
         user: { select: { id: true, username: true, full_name: true, phone: true } },
         // Conteo de pronósticos del boleto → para "Pronosticó X/N partidos".
         _count: { select: { ticket_picks: true } },
+        // Qué partidos pronosticó (match_id) → para la matriz "quién apostó qué".
+        ticket_picks: { select: { match_id: true } },
       },
     });
 
     const userIdsWithTickets = new Set(tickets.map(t => t.user_id));
     const betPerMatchday = Number(matchday.tournament?.bet_per_matchday ?? 0);
-    // Total de partidos de la jornada (N en "X/N").
-    const matchesCount = await this.prisma.match.count({ where: { matchday_id: id } });
+    // Partidos de la jornada (orden por fecha) → columnas del pivot + N en "X/N".
+    const matchesList = (matchday.matches ?? []).map((m: any) => ({
+      id: m.id,
+      team_a: m.team_a?.name ?? '-',
+      team_b: m.team_b?.name ?? '-',
+      match_date: m.match_date,
+    }));
+    const matchesCount = matchesList.length;
 
     const usersBet = tickets.map(t => ({
       id: t.user?.id,
@@ -265,6 +273,8 @@ export class MatchdaysService {
       total_correct: t.total_correct ?? null,
       // Cuántos partidos pronosticó este participante (de matchesCount).
       picks_count: (t as any)._count?.ticket_picks ?? 0,
+      // IDs de los partidos que SÍ pronosticó → el pivot marca el resto como "no apostó".
+      picked_match_ids: ((t as any).ticket_picks ?? []).map((p: any) => p.match_id),
       status: t.status,
       prize_won: t.prize_won ? Number(t.prize_won) : 0,
       created_at: t.created_at,
@@ -307,6 +317,8 @@ export class MatchdaysService {
       pending_count: usersPending.length,
       users_bet: usersBet,
       pending_users: usersPending,
+      // Partidos de la jornada (columnas del pivot "quién apostó qué partido").
+      matches: matchesList,
     };
   }
 

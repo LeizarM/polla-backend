@@ -278,6 +278,155 @@ export class ReportsService {
     doc.fillColor(C.text);
   }
 
+  /** Tilde (✓) vectorial verde — "apostó este partido". */
+  private drawCheckMark(doc: PDFKit.PDFDocument, cx: number, cy: number, color = C.success) {
+    doc.save().lineWidth(1.6).lineJoin('round').strokeColor(color);
+    doc.moveTo(cx - 3.6, cy + 0.2).lineTo(cx - 1, cy + 3).lineTo(cx + 4, cy - 3.4).stroke();
+    doc.restore();
+  }
+
+  /** Cruz (✗) vectorial roja — "NO apostó este partido". */
+  private drawXMark(doc: PDFKit.PDFDocument, cx: number, cy: number, color = C.danger) {
+    doc.save().lineWidth(1.6).lineCap('round').strokeColor(color);
+    doc.moveTo(cx - 3.2, cy - 3.2).lineTo(cx + 3.2, cy + 3.2).stroke();
+    doc.moveTo(cx + 3.2, cy - 3.2).lineTo(cx - 3.2, cy + 3.2).stroke();
+    doc.restore();
+  }
+
+  /**
+   * Página de PIVOT "Quién apostó cada partido" — SIEMPRE en hoja aparte.
+   * Filas = TODOS los inscritos aprobados (apostaron o no), columnas = partidos.
+   * Tilde verde = apostó ese partido; cruz roja = NO apostó ese partido.
+   * Incluye columna "Sin apostar" por persona y fila total "No apostaron" por partido.
+   */
+  private drawBetMatrixPage(doc: PDFKit.PDFDocument, report: any, appTitle: string) {
+    const matches: any[] = report?.matches ?? [];
+    const n = matches.length;
+
+    // Filas: bettors (con sus picks) + no-apostaron (set vacío). Orden alfabético
+    // para encontrar a cualquiera rápido; el color hace saltar a la vista los huecos.
+    const rows: { name: string; picked: Set<string>; bet: boolean }[] = [
+      ...((report?.users_bet ?? []).map((u: any) => ({
+        name: u?.full_name ?? '-',
+        picked: new Set<string>(u?.picked_match_ids ?? []),
+        bet: true,
+      }))),
+      ...((report?.pending_users ?? []).map((u: any) => ({
+        name: u?.full_name ?? '-',
+        picked: new Set<string>(),
+        bet: false,
+      }))),
+    ].sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }));
+
+    // ── Geometría de la página (ancho/alto dinámicos para que TODO entre) ──
+    const posW = 26, nameW = 170, matchW = 34, skipW = 60, left = 40;
+    const tableW = posW + nameW + n * matchW + skipW;
+    const pageW = Math.max(612, left * 2 + tableW);
+    const rowH = 18, headRowH = 24;
+    const legendH = n > 0 ? 70 + n * 12 : 40;
+    const pageH = Math.max(792, 150 + legendH + (rows.length + 2) * rowH + 90);
+
+    doc.addPage({ size: [pageW, pageH], margin: 40 });
+
+    // Encabezado compacto de la página
+    doc.rect(0, 0, pageW, 3).fill(C.gold);
+    this.drawSectionTitle(doc, 'Quién Apostó Cada Partido', C.primaryDk, 'users');
+    doc.fontSize(9).font('Helvetica').fillColor(C.muted)
+      .text('Tilde verde = apostó ese partido   ·   Cruz roja = NO apostó ese partido. Incluye a todos los inscritos.', 40, doc.y, { width: pageW - 80 });
+    doc.moveDown(0.6);
+
+    if (n === 0) {
+      doc.fontSize(10).font('Helvetica').fillColor(C.muted).text('Esta jornada no tiene partidos cargados.');
+      return;
+    }
+
+    // Leyenda P1..Pn → enfrentamientos
+    doc.fontSize(9).font('Helvetica-Bold').fillColor(C.primaryDk).text('Partidos:', 40, doc.y);
+    doc.moveDown(0.2);
+    matches.forEach((m, i) => {
+      doc.fontSize(8).font('Helvetica').fillColor(C.text)
+        .text(`P${i + 1}:  ${m?.team_a ?? '-'}  vs  ${m?.team_b ?? '-'}`, 50, doc.y, { width: pageW - 90 });
+    });
+    doc.moveDown(0.5);
+
+    const colWidths = [posW, nameW, ...matches.map(() => matchW), skipW];
+    const headers = ['#', 'Participante', ...matches.map((_, i) => `P${i + 1}`), 'Sin apostar'];
+
+    const drawHeader = () => {
+      const y = doc.y;
+      doc.roundedRect(left, y, tableW, headRowH, 4).fill(C.primaryDk);
+      doc.roundedRect(left, y, tableW * 0.7, headRowH, 4).fill(C.primary);
+      let x = left;
+      doc.fontSize(8).font('Helvetica-Bold').fillColor(C.headerText);
+      headers.forEach((h, i) => {
+        doc.text(h, x + 3, y + 8, { width: colWidths[i] - 6, align: i === 1 ? 'left' : 'center' });
+        x += colWidths[i];
+      });
+      doc.y = y + headRowH;
+      doc.fillColor(C.text);
+    };
+
+    drawHeader();
+
+    rows.forEach((r, idx) => {
+      if (doc.y > pageH - 60) {
+        doc.addPage({ size: [pageW, pageH], margin: 40 });
+        drawHeader();
+      }
+      const y = doc.y;
+      const skip = n - r.picked.size;
+      // Fila con leve tinte rojo si NO apostó algún partido → resalta los huecos.
+      const bg = skip > 0 ? (idx % 2 === 0 ? '#FEF2F2' : '#FEE2E2') : (idx % 2 === 0 ? C.rowEven : C.rowOdd);
+      doc.rect(left, y, tableW, rowH).fill(bg);
+      doc.moveTo(left, y + rowH).lineTo(left + tableW, y + rowH).lineWidth(0.4).stroke(C.borderSoft);
+
+      let x = left;
+      // #
+      doc.fontSize(8).font('Helvetica').fillColor(C.muted)
+        .text(String(idx + 1), x + 2, y + 5, { width: posW - 4, align: 'center' });
+      x += posW;
+      // Nombre (una línea, con elipsis)
+      doc.fontSize(8).font('Helvetica').fillColor(C.text)
+        .text(r.name, x + 4, y + 5, { width: nameW - 8, align: 'left', lineBreak: false, ellipsis: true });
+      x += nameW;
+      // Marcas por partido
+      matches.forEach(m => {
+        const cx = x + matchW / 2;
+        const cy = y + rowH / 2;
+        if (r.picked.has(m.id)) this.drawCheckMark(doc, cx, cy);
+        else this.drawXMark(doc, cx, cy);
+        x += matchW;
+      });
+      // Sin apostar (conteo por persona)
+      doc.fontSize(8).font('Helvetica-Bold').fillColor(skip > 0 ? C.danger : C.muted)
+        .text(String(skip), x + 2, y + 5, { width: skipW - 4, align: 'center' });
+      doc.y = y + rowH;
+    });
+
+    // Fila TOTAL: cuántos NO apostaron cada partido
+    if (doc.y > pageH - 40) {
+      doc.addPage({ size: [pageW, pageH], margin: 40 });
+      drawHeader();
+    }
+    const ty = doc.y;
+    doc.rect(left, ty, tableW, rowH + 2).fill(C.primaryDk);
+    let tx = left;
+    doc.fontSize(8).font('Helvetica-Bold').fillColor(C.headerText)
+      .text('No apostaron', tx + 2, ty + 6, { width: posW + nameW - 4, align: 'left' });
+    tx += posW + nameW;
+    let totalSkips = 0;
+    matches.forEach(m => {
+      const noBet = rows.filter(r => !r.picked.has(m.id)).length;
+      totalSkips += noBet;
+      doc.fontSize(8).font('Helvetica-Bold').fillColor('#FCA5A5')
+        .text(String(noBet), tx + 2, ty + 6, { width: matchW - 4, align: 'center' });
+      tx += matchW;
+    });
+    doc.fontSize(8).font('Helvetica-Bold').fillColor('#FCA5A5')
+      .text(String(totalSkips), tx + 2, ty + 6, { width: skipW - 4, align: 'center' });
+    doc.y = ty + rowH + 2;
+  }
+
   private drawSectionTitle(doc: PDFKit.PDFDocument, title: string, color = C.primary, icon = '') {
     doc.moveDown(0.5);
     const y = doc.y;
@@ -392,6 +541,9 @@ export class ReportsService {
 
       // (Footer de ganadores quitado a pedido — los ganadores ya se ven por el
       //  orden de la tabla, el premio y el resaltado dorado de la fila.)
+
+      // SIEMPRE en hoja aparte: pivot de quién apostó cada partido (y quién no).
+      this.drawBetMatrixPage(doc, report, appSettings.app_title);
 
       this.drawFooter(doc);
       doc.end();
