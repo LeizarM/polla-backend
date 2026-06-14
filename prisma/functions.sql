@@ -129,12 +129,18 @@ FOR EACH ROW
 EXECUTE FUNCTION process_group_bet_insert();
 
 -- Function 4: Resolve matchday
--- Only real bettors (amount_bet > 0) compete for the pool.
--- Ghost tickets (amount_bet = 0) are auto-lost and never win prizes.
+-- ⚠️ El resolvedor AUTORITATIVO es la app (matchdays.service.resolve()). Esta
+--    función SQL queda SOLO como respaldo manual y debe seguir la MISMA regla:
+--    el pozo = monto por jornada × TODOS los inscritos APROBADOS (apuesten o no),
+--    repartido en partes iguales entre los de MÁS aciertos (boletos reales).
+--    Los que no apostaron aportan al pozo pero no pueden ganar (ghost tickets).
+--    (Antes repartía matchday.total_pool = solo bettors × bet − house_cut.)
 CREATE OR REPLACE FUNCTION resolve_matchday(p_matchday_id UUID)
 RETURNS TABLE(winners_count INTEGER, total_distributed DECIMAL) AS $$
 DECLARE
   v_total_pool DECIMAL(12,2);
+  v_bet DECIMAL(12,2);
+  v_participants INTEGER;
   v_max_correct INTEGER;
   v_winner_count INTEGER;
   v_prize_per_winner DECIMAL(12,2);
@@ -160,9 +166,18 @@ BEGIN
   SELECT MAX(total_correct) INTO v_max_correct
   FROM ticket WHERE matchday_id = p_matchday_id AND amount_bet > 0;
 
-  -- Get pool
-  SELECT total_pool INTO v_total_pool
-  FROM matchday WHERE id = p_matchday_id;
+  -- POZO = monto por jornada × TODOS los inscritos APROBADOS (apuesten o no).
+  -- Igual que matchdays.service.resolve(): NO usa matchday.total_pool ni house cut.
+  SELECT t.bet_per_matchday INTO v_bet
+  FROM matchday m JOIN tournament t ON t.id = m.tournament_id
+  WHERE m.id = p_matchday_id;
+
+  SELECT COUNT(*) INTO v_participants
+  FROM tournament_participant tp
+  JOIN matchday m ON m.tournament_id = tp.tournament_id
+  WHERE m.id = p_matchday_id AND tp.status = 'approved';
+
+  v_total_pool := COALESCE(v_bet, 0) * COALESCE(v_participants, 0);
 
   IF v_max_correct IS NOT NULL AND v_max_correct > 0 AND v_total_pool > 0 THEN
     -- Count winners (real bettors with max correct)
