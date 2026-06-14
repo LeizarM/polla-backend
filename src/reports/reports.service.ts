@@ -305,6 +305,8 @@ export class ReportsService {
 
     // Filas: bettors (con sus picks) + no-apostaron (set vacío). Orden alfabético
     // para encontrar a cualquiera rápido; el color hace saltar a la vista los huecos.
+    // SOLO se listan quienes NO apostaron algún partido (Sin apostar > 0). Los que
+    // apostaron TODOS los partidos se omiten (a pedido: no aportan información aquí).
     const rows: { name: string; picked: Set<string>; bet: boolean }[] = [
       ...((report?.users_bet ?? []).map((u: any) => ({
         name: u?.full_name ?? '-',
@@ -316,7 +318,9 @@ export class ReportsService {
         picked: new Set<string>(),
         bet: false,
       }))),
-    ].sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }));
+    ]
+      .filter(r => n - r.picked.size > 0)
+      .sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }));
 
     // ── Geometría de la página (ancho/alto dinámicos para que TODO entre) ──
     const posW = 26, nameW = 170, matchW = 34, skipW = 60, left = 40;
@@ -330,13 +334,19 @@ export class ReportsService {
 
     // Encabezado compacto de la página
     doc.rect(0, 0, pageW, 3).fill(C.gold);
-    this.drawSectionTitle(doc, 'Quién Apostó Cada Partido', C.primaryDk, 'users');
+    this.drawSectionTitle(doc, 'Quiénes No Apostaron Algún Partido', C.primaryDk, 'users');
     doc.fontSize(9).font('Helvetica').fillColor(C.muted)
-      .text('Tilde verde = apostó ese partido   ·   Cruz roja = NO apostó ese partido. Incluye a todos los inscritos.', 40, doc.y, { width: pageW - 80 });
+      .text('Cruz roja = NO apostó ese partido   ·   Tilde verde = sí apostó. Solo se listan quienes dejaron de apostar al menos un partido.', 40, doc.y, { width: pageW - 80 });
     doc.moveDown(0.6);
 
     if (n === 0) {
       doc.fontSize(10).font('Helvetica').fillColor(C.muted).text('Esta jornada no tiene partidos cargados.');
+      return;
+    }
+
+    if (rows.length === 0) {
+      doc.fontSize(11).font('Helvetica-Bold').fillColor(C.success)
+        .text('Todos los inscritos apostaron todos los partidos de la jornada.', 40, doc.y + 4, { width: pageW - 80 });
       return;
     }
 
