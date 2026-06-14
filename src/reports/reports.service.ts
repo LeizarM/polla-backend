@@ -339,12 +339,15 @@ export class ReportsService {
         { label: 'Pozo total', value: `${cur} ${Number(report?.stats?.expected_pool ?? 0).toFixed(2)}`, color: C.gold, icon: 'trophy' },
       ]);
 
+      // Total de partidos de la jornada → N en "Pronosticó X/N".
+      const matchesCount = Number(report?.matchday?.matches_count ?? 0);
+
       // Users who bet
       this.drawSectionTitle(doc, 'Participantes que Apostaron', C.success, 'users');
       if ((report?.users_bet?.length ?? 0) > 0) {
         // Privacidad: NO mostramos usuario (@) ni telefono en los reportes.
-        const headers = ['#', 'Nombre', 'Aciertos', 'Premio'];
-        const widths = [30, 290, 70, 90];
+        const headers = ['#', 'Nombre', 'Pronosticos', 'Aciertos', 'Premio'];
+        const widths = [28, 214, 90, 70, 88];
         this.drawGridHeader(doc, headers, widths);
         // Orden alfabetico por nombre (locale es → respeta acentos/ñ). Los
         // ganadores empatan y reparten parejo (no hay 1°/2°/3°), asi que TODOS
@@ -362,6 +365,7 @@ export class ReportsService {
           this.drawGridRow(doc, [
             String(i + 1),
             u?.full_name ?? '-',
+            `${Number(u?.picks_count ?? 0)}/${matchesCount}`,
             String(u?.total_correct ?? '-'),
             (u?.prize_won ?? 0) > 0 ? `${cur} ${Number(u.prize_won).toFixed(2)}` : '-',
           ], widths, i, isWinner ? true : undefined);

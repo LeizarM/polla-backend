@@ -246,11 +246,15 @@ export class MatchdaysService {
       where: { matchday_id: id, amount_bet: { gt: 0 } },
       include: {
         user: { select: { id: true, username: true, full_name: true, phone: true } },
+        // Conteo de pronósticos del boleto → para "Pronosticó X/N partidos".
+        _count: { select: { ticket_picks: true } },
       },
     });
 
     const userIdsWithTickets = new Set(tickets.map(t => t.user_id));
     const betPerMatchday = Number(matchday.tournament?.bet_per_matchday ?? 0);
+    // Total de partidos de la jornada (N en "X/N").
+    const matchesCount = await this.prisma.match.count({ where: { matchday_id: id } });
 
     const usersBet = tickets.map(t => ({
       id: t.user?.id,
@@ -259,6 +263,8 @@ export class MatchdaysService {
       phone: t.user?.phone,
       amount_bet: Number(t.amount_bet),
       total_correct: t.total_correct ?? null,
+      // Cuántos partidos pronosticó este participante (de matchesCount).
+      picks_count: (t as any)._count?.ticket_picks ?? 0,
       status: t.status,
       prize_won: t.prize_won ? Number(t.prize_won) : 0,
       created_at: t.created_at,
@@ -287,6 +293,7 @@ export class MatchdaysService {
         tournament_name: matchday.tournament?.name,
         bet_per_matchday: betPerMatchday,
         currency: matchday.tournament?.currency ?? 'Bs',
+        matches_count: matchesCount,
       },
       stats: {
         total_active_users: participants.length,
