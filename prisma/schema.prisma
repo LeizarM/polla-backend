@@ -163,6 +163,11 @@ model ticket {
   matchday     matchday      @relation(fields: [matchday_id], references: [id])
   ticket_picks ticket_pick[]
 
+  // Un usuario tiene COMO MÁXIMO un boleto por jornada (apuesta real O ghost,
+  // nunca ambos). Candado a nivel BD contra el doble-boleto por race condition:
+  // dos POST casi simultáneos (doble-tap) ya no pueden colarse ambos — la 2ª
+  // inserción choca contra este índice único y se rechaza. Ver tickets.service.create.
+  @@unique([user_id, matchday_id], map: "uniq_ticket_user_matchday")
   @@index([user_id], map: "idx_ticket_user")
   @@index([matchday_id], map: "idx_ticket_matchday")
 }

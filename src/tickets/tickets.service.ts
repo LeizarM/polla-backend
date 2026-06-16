@@ -97,7 +97,12 @@ export class TicketsService {
       );
     }
 
-    // Check if user already has a ticket for this matchday
+    // Atajo de UX: si ya tiene boleto, devolvemos el mensaje amable sin pegarle
+    // a la BD con un error de constraint. PERO esto NO es la garantía real: este
+    // chequeo corre fuera de la transacción, así que dos POST casi simultáneos
+    // (doble-tap) podían colarse ambos. La garantía dura es el índice único
+    // @@unique([user_id, matchday_id]) — el try/catch de P2002 más abajo
+    // convierte ese choque en el mismo mensaje amable.
     const existing = await this.prisma.ticket.findFirst({
       where: { user_id: userId, matchday_id, amount_bet: { gt: 0 } },
     });
@@ -107,32 +112,44 @@ export class TicketsService {
     const betAmount = Number(matchday.tournament.bet_per_matchday);
 
     // Create ticket with picks
-    const ticket = await this.prisma.$transaction(async (tx) => {
-      // Update matchday pool
-      await tx.matchday.update({
-        where: { id: matchday_id },
-        data: { total_pool: { increment: betAmount } },
-      });
+    let ticket;
+    try {
+      ticket = await this.prisma.$transaction(async (tx) => {
+        // Update matchday pool
+        await tx.matchday.update({
+          where: { id: matchday_id },
+          data: { total_pool: { increment: betAmount } },
+        });
 
-      const createdTicket = await tx.ticket.create({
-        data: {
-          user_id: userId,
-          matchday_id,
-          amount_bet: betAmount,
-          pool_contribution: betAmount,
-        },
-      });
+        const createdTicket = await tx.ticket.create({
+          data: {
+            user_id: userId,
+            matchday_id,
+            amount_bet: betAmount,
+            pool_contribution: betAmount,
+          },
+        });
 
-      await tx.ticket_pick.createMany({
-        data: picks.map((p: any) => ({
-          ticket_id: createdTicket.id,
-          match_id: p.match_id,
-          pick: p.pick,
-        })),
-      });
+        await tx.ticket_pick.createMany({
+          data: picks.map((p: any) => ({
+            ticket_id: createdTicket.id,
+            match_id: p.match_id,
+            pick: p.pick,
+          })),
+        });
 
-      return createdTicket;
-    });
+        return createdTicket;
+      });
+    } catch (e) {
+      // P2002 = violación de índice único (uniq_ticket_user_matchday). Pasa cuando
+      // una 2ª petición casi simultánea ganó la carrera y ya creó el boleto. La
+      // transacción entera (incluido el increment del pozo) se revierte sola, así
+      // que NO hay doble apuesta ni pozo inflado. Respondemos el mensaje de siempre.
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+        throw new BadRequestException('Ya tienes una apuesta en esta jornada');
+      }
+      throw e;
+    }
 
     return this.findOne(userId, ticket.id);
   }
