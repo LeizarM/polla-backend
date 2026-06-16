@@ -109,12 +109,19 @@ export class TournamentParticipantsService {
       },
       orderBy: { created_at: 'desc' },
     });
-    // Devolvemos forma mínima — sin status interno ni timestamps de gestión
+    // Devolvemos forma mínima — sin status interno ni timestamps de gestión.
+    // Trim del nombre: un " José" rompía el orden alfabético de "Sin apuesta".
     return rows.map((r) => ({
       id: r.id,
       user_id: r.user_id,
       status: r.status,
-      user: r.user,
+      user: r.user
+        ? {
+            ...r.user,
+            username: typeof r.user.username === 'string' ? r.user.username.trim() : r.user.username,
+            full_name: typeof r.user.full_name === 'string' ? r.user.full_name.trim() : r.user.full_name,
+          }
+        : r.user,
     }));
   }
 

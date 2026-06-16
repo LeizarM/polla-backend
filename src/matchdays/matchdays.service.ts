@@ -2,6 +2,12 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 
+// Quita espacios al inicio/fin. Un nombre como " José" rompía el orden
+// alfabético (el espacio ordena antes que las letras) en reportes y pantalla.
+// Defensa-en-profundidad: el trim también se aplica al guardar (DTOs) y se
+// limpió el dato existente, pero esto blinda la lectura por si reaparece.
+const trimStr = (s: any): any => (typeof s === 'string' ? s.trim() : s);
+
 @Injectable()
 export class MatchdaysService {
   constructor(private prisma: PrismaService) {}
@@ -266,9 +272,9 @@ export class MatchdaysService {
 
     const usersBet = tickets.map(t => ({
       id: t.user?.id,
-      username: t.user?.username,
-      full_name: t.user?.full_name,
-      phone: t.user?.phone,
+      username: trimStr(t.user?.username),
+      full_name: trimStr(t.user?.full_name),
+      phone: trimStr(t.user?.phone),
       amount_bet: Number(t.amount_bet),
       total_correct: t.total_correct ?? null,
       // Cuántos partidos pronosticó este participante (de matchesCount).
@@ -285,9 +291,9 @@ export class MatchdaysService {
       .filter(p => !userIdsWithTickets.has(p.user_id))
       .map(p => ({
         id: p.user?.id,
-        username: p.user?.username,
-        full_name: p.user?.full_name,
-        phone: p.user?.phone,
+        username: trimStr(p.user?.username),
+        full_name: trimStr(p.user?.full_name),
+        phone: trimStr(p.user?.phone),
       }));
 
     // Pool = ALL approved participants × bet (not just real bettors)
@@ -533,8 +539,8 @@ export class MatchdaysService {
     const betLog = tickets.map((t, idx) => ({
       position: idx + 1,
       user_id: t.user_id,
-      username: t.user?.username ?? '-',
-      full_name: t.user?.full_name ?? '-',
+      username: trimStr(t.user?.username) ?? '-',
+      full_name: trimStr(t.user?.full_name) ?? '-',
       bet_time: t.created_at,
       total_correct: t.total_correct ?? null,
       prize_won: isResolved ? Number(t.prize_won ?? 0) : null,

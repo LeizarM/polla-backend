@@ -1,8 +1,15 @@
 import { IsString, IsNotEmpty, IsOptional } from 'class-validator';
+import { Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+
+// Quita espacios al inicio/fin. Un nombre como " José" rompía el orden
+// alfabético (el espacio ordena antes que las letras). Aplica al guardar.
+const trim = ({ value }: { value: unknown }) =>
+  typeof value === 'string' ? value.trim() : value;
 
 export class SignupDto {
   @ApiProperty({ example: 'johndoe' })
+  @Transform(trim)
   @IsString()
   @IsNotEmpty()
   username: string;
@@ -16,11 +23,13 @@ export class SignupDto {
   password: string;
 
   @ApiProperty({ example: 'John Doe' })
+  @Transform(trim)
   @IsString()
   @IsNotEmpty()
   full_name: string;
 
   @ApiProperty({ example: '1234567890' })
+  @Transform(trim)
   @IsString()
   @IsNotEmpty()
   phone: string;
@@ -28,6 +37,7 @@ export class SignupDto {
   // CI obligatorio, NO único — varios usuarios pueden compartir el mismo CI
   // (familiares, etc.). El único campo único es `username`.
   @ApiProperty({ example: '12345678', description: 'Cédula de Identidad (obligatoria, puede repetirse)' })
+  @Transform(trim)
   @IsString()
   @IsNotEmpty()
   ci: string;
