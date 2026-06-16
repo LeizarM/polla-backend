@@ -4,6 +4,14 @@ import { PrismaService } from '../prisma/prisma.service';
 import { MatchdaysService } from '../matchdays/matchdays.service';
 import { FinalBetsService } from '../final-bets/final-bets.service';
 
+// Clave de orden alfabético: ignora símbolos/espacios al INICIO del nombre
+// (" José", ".Teka") para que el orden use la primera LETRA real y no el
+// símbolo (que ordena antes que las letras). No altera el nombre mostrado.
+const sortKey = (s: any): string =>
+  String(s ?? '').replace(/^[^a-zA-ZÀ-ÿ0-9]+/, '').trim();
+const byName = (a: any, b: any): number =>
+  sortKey(a).localeCompare(sortKey(b), 'es', { sensitivity: 'base' });
+
 // Color palette for PDF — vivid, modern, high-contrast
 const C = {
   // Brand
@@ -320,7 +328,7 @@ export class ReportsService {
       }))),
     ]
       .filter(r => n - r.picked.size > 0)
-      .sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }));
+      .sort((a, b) => byName(a.name, b.name));
 
     // ── Geometría de la página (ancho/alto dinámicos para que TODO entre) ──
     const posW = 26, nameW = 170, matchW = 34, skipW = 60, left = 40;
@@ -517,7 +525,7 @@ export class ReportsService {
           if (corr !== 0) return corr;
           const prize = Number(b?.prize_won ?? 0) - Number(a?.prize_won ?? 0);
           if (prize !== 0) return prize;
-          return (a?.full_name ?? '').localeCompare(b?.full_name ?? '', 'es', { sensitivity: 'base' });
+          return byName(a?.full_name, b?.full_name);
         });
         betSorted.forEach((u: any, i: number) => {
           const isWinner = u?.status === 'won';
@@ -542,7 +550,7 @@ export class ReportsService {
         const pWidths = [40, 410];
         this.drawGridHeader(doc, pHeaders, pWidths);
         const pendingSorted = [...(report?.pending_users ?? [])].sort((a: any, b: any) =>
-          (a?.full_name ?? '').localeCompare(b?.full_name ?? '', 'es', { sensitivity: 'base' }),
+          byName(a?.full_name, b?.full_name),
         );
         pendingSorted.forEach((u: any, i: number) => {
           this.drawGridRow(doc, [String(i + 1), u?.full_name ?? '-'], pWidths, i);
@@ -650,7 +658,7 @@ export class ReportsService {
       .sort((a, b) =>
         b.totalPrize - a.totalPrize ||          // 1º mayor dinero
         b.totalCorrect - a.totalCorrect ||      // 2º más aciertos
-        (a.full_name ?? '').localeCompare(b.full_name ?? '', 'es'), // 3º alfabético
+        byName(a.full_name, b.full_name), // 3º alfabético
       );
 
     const openMatchdays = matchdays.filter(m => m.status === 'open');
@@ -736,7 +744,7 @@ export class ReportsService {
       .sort((a, b) =>
         b.totalPrize - a.totalPrize ||
         b.totalCorrect - a.totalCorrect ||
-        (a.full_name ?? '').localeCompare(b.full_name ?? '', 'es'),
+        byName(a.full_name, b.full_name),
       );
 
     return new Promise((resolve, reject) => {
