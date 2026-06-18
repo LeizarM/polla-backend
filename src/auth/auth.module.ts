@@ -22,7 +22,11 @@ import { PrismaModule } from '../prisma/prisma.module';
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
         secret: config.get<string>('JWT_SECRET'),
-        signOptions: { expiresIn: '7d' },
+        // TEMPORAL: sesión extendida de 7d → 35d (pedido). Para revertir, volver
+        // a '7d'. Está hardcodeado a propósito: la env JWT_EXPIRES_IN del compose
+        // viene fijada en 7d, así que leerla anularía este cambio. Solo afecta
+        // tokens NUEVOS (al próximo login), no los ya emitidos.
+        signOptions: { expiresIn: '35d' },
       }),
     }),
   ],
