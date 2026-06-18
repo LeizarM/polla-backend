@@ -77,6 +77,7 @@ export class UsersService {
         ...(dto.username && { username: dto.username.trim() }),
         ...(dto.ci !== undefined && { ci: dto.ci.trim() }),
         ...(dto.fcm_token !== undefined && { fcm_token: dto.fcm_token }),
+        ...(typeof dto.flip_own_picks === 'boolean' && { flip_own_picks: dto.flip_own_picks }),
         updated_at: new Date(),
       },
     });

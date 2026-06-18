@@ -1,4 +1,4 @@
-import { IsString, IsOptional } from 'class-validator';
+import { IsString, IsOptional, IsBoolean } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
 
@@ -37,4 +37,10 @@ export class UpdateProfileDto {
   @IsString()
   @IsOptional()
   fcm_token?: string;
+
+  // Preferencia: flip de celdas selladas (propias) en Registro de Apuestas.
+  @ApiProperty({ required: false, description: 'Activar flip de mis pronósticos sellados' })
+  @IsBoolean()
+  @IsOptional()
+  flip_own_picks?: boolean;
 }

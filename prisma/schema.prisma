@@ -43,6 +43,11 @@ model user {
   avatar            Bytes?
   avatar_mime       String?   @db.VarChar(30)
   avatar_updated_at DateTime? @db.Timestamptz(6)
+  // Preferencia de UI: en "Registro de Apuestas" permitir VOLTEAR (flip) las
+  // celdas SELLADAS de la PROPIA fila para ver el pronóstico propio (long-press
+  // en móvil / click en web). Solo revela lo del propio usuario y solo mientras
+  // el partido sigue sellado. Default off → opt-in desde el perfil.
+  flip_own_picks Boolean  @default(false)
   created_at    DateTime @default(now()) @db.Timestamptz(6)
   updated_at    DateTime @default(now()) @db.Timestamptz(6)
 
