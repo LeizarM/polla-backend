@@ -752,7 +752,7 @@ export class ReportsService {
       // sola tabla, sin cortarse ni paginar horizontalmente. (fixedW=232:
       // pos 32 + nombre 130 + ganado 70; mdColW=56 por jornada). Mínimo 792
       // (= landscape letter) para torneos con pocas jornadas.
-      const pageW = Math.max(792, 80 + 232 + matchdays.length * 56);
+      const pageW = Math.max(792, 80 + 246 + matchdays.length * 56); // 246 = pos+name+ganado
       // Alto dinámico: la página crece hacia ABAJO según la cantidad de
       // participantes → TODO entra en UNA sola página (no se pagina vertical).
       const pageH = Math.max(612, 380 + ranking.length * 21);
@@ -797,7 +797,7 @@ export class ReportsService {
       const mdColW    = 56;                 // ancho por columna de jornada (dinero)
       const posW      = 32;
       const nameW     = 130;
-      const ganadoW   = 70;
+      const ganadoW   = 84; // más ancho para "TOTAL GANADO"
       const fixedW    = posW + nameW + ganadoW;
       // TODAS las jornadas en un solo "chunk" → una sola tabla en la página ancha.
       const mdPerPage = Math.max(1, matchdays.length);
@@ -834,8 +834,8 @@ export class ReportsService {
 
         // Headers para este chunk
         const mdHeaders = chunk.mds.map((_, i) => `J${chunk.start + i + 1}`);
-        const headers   = ['#', 'Participante', ...mdHeaders, 'Ganado'];
-        const colWidths = [posW, nameW, ...chunk.mds.map(() => mdColW), ganadoW];
+        const headers   = ['#', 'Participante', 'Total Ganado', ...mdHeaders];
+        const colWidths = [posW, nameW, ganadoW, ...chunk.mds.map(() => mdColW)];
 
         this.drawGridHeader(doc, headers, colWidths);
 
@@ -859,8 +859,8 @@ export class ReportsService {
           this.drawGridRow(doc, [
             String(pos),
             u.full_name,
-            ...mdValues,
             u.totalPrize > 0 ? `${cur2} ${formatMoney(u.totalPrize)}` : '-',
+            ...mdValues,
           ], colWidths, i, highlight);
         });
 
