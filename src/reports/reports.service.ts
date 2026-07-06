@@ -941,8 +941,10 @@ export class ReportsService {
       // Bets table
       this.drawSectionTitle(doc, 'Apuestas de los Participantes', C.primary, 'users');
       if ((report?.bets?.length ?? 0) > 0) {
-        const headers = ['#', 'Nombre', 'Campeón', 'Subcampeón', '3er Lugar', '4to Lugar', 'Pts', 'Premio'];
-        const colWidths = [30, 130, 105, 105, 95, 95, 40, 60];
+        // Cada posición muestra cuántos puntos vale su acierto (12/8/4/2). La
+        // columna "Pts" al final es el TOTAL que sacó cada participante.
+        const headers = ['#', 'Nombre', 'Campeón (12 pts)', 'Subcampeón (8 pts)', '3er Lugar (4 pts)', '4to Lugar (2 pts)', 'Pts', 'Premio'];
+        const colWidths = [30, 130, 105, 112, 105, 105, 40, 60];
         this.drawGridHeader(doc, headers, colWidths);
         (report?.bets ?? []).forEach((b: any, i: number) => {
           const isTop = i < 3;
