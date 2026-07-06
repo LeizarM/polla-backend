@@ -150,7 +150,13 @@ export class FinalBetsService {
 
     // Calculate pool: matchdays_count * participants * Y
     const matchdayCount = tournament._count.matchdays;
-    const participantCount = bets.length;
+    // Pozo = TODOS los inscritos aprobados (apuesten o no la Polla Final), igual
+    // que el pozo por jornada. Coincide con lo que muestra la app
+    // (inscritos × jornadas × bet_final). Antes usaba bets.length (solo apostadores)
+    // → repartía menos de lo mostrado si alguien no ponía su Polla Final.
+    const participantCount = await this.prisma.tournament_participant.count({
+      where: { tournament_id: tournamentId, status: 'approved' },
+    });
     const betFinal = Number(tournament.bet_final);
     const pool = matchdayCount * participantCount * betFinal;
 
@@ -230,7 +236,9 @@ export class FinalBetsService {
 
     const betFinal = Number(tournament.bet_final);
     const matchdayCount = tournament._count.matchdays;
-    const pool = matchdayCount * bets.length * betFinal;
+    // Pozo = inscritos aprobados × jornadas × bet_final (todos cuentan, apuesten o
+    // no) — coincide con la app y con resolve(). `bets.length` = solo apostadores.
+    const pool = matchdayCount * participants.length * betFinal;
 
     return {
       tournament: {
