@@ -923,11 +923,11 @@ export class ReportsService {
       this.drawPdfHeader(doc, 'Reporte Polla Final', report?.tournament?.name ?? '-', appSettings.app_title);
 
       this.drawStatsBox(doc, [
-        { label: 'Apuesta Final/Jornada', value: `${cur3} ${report?.tournament?.bet_final ?? 0}` },
-        { label: 'Jornadas', value: String(report?.tournament?.matchday_count ?? 0) },
-        { label: 'Apostaron', value: String(report?.participant_count ?? 0) },
-        { label: 'Pendientes', value: String(pendingUsers.length) },
-        { label: 'Pozo', value: `${cur3} ${Number(report?.pool ?? 0).toFixed(2)}` },
+        { label: 'Apuesta Final/Jornada', value: `${cur3} ${report?.tournament?.bet_final ?? 0}`, color: C.primary, icon: 'coin' },
+        { label: 'Jornadas', value: String(report?.tournament?.matchday_count ?? 0), color: C.accent, icon: 'calendar' },
+        { label: 'Apostaron', value: String(report?.participant_count ?? 0), color: C.success, icon: 'users' },
+        { label: 'Pendientes', value: String(pendingUsers.length), color: C.warning, icon: 'clock' },
+        { label: 'Pozo Total', value: `${cur3} ${Number(report?.pool ?? 0).toFixed(2)}`, color: C.gold, icon: 'trophy' },
       ]);
 
       // Quarter teams
