@@ -210,7 +210,14 @@ export class FinalBetsService {
       include: {
         user: { select: { id: true, username: true, full_name: true } },
       },
-      orderBy: [{ total_points: 'desc' }, { created_at: 'asc' }],
+    });
+    // Orden del reporte: por PUNTOS (desc) y, entre empates, alfabético por
+    // nombre (locale es → respeta acentos y ñ). Antes el desempate era por
+    // created_at, así que quien apostaba primero salía arriba con igual puntaje.
+    bets.sort((a, b) => {
+      const byPts = (b.total_points ?? 0) - (a.total_points ?? 0);
+      if (byPts !== 0) return byPts;
+      return (a.user?.full_name ?? '').localeCompare(b.user?.full_name ?? '', 'es', { sensitivity: 'base' });
     });
 
     // Get quarter teams
@@ -232,7 +239,9 @@ export class FinalBetsService {
         username: p.user?.username,
         full_name: p.user?.full_name,
         phone: p.user?.phone,
-      }));
+      }))
+      // Alfabético por nombre (locale es).
+      .sort((a, b) => (a.full_name ?? '').localeCompare(b.full_name ?? '', 'es', { sensitivity: 'base' }));
 
     const betFinal = Number(tournament.bet_final);
     const matchdayCount = tournament._count.matchdays;
