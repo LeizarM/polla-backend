@@ -37,8 +37,9 @@ export class FinalBetsService {
     for (const pick of picks) {
       if (!quarterIds.has(pick)) throw new BadRequestException('Todos los picks deben ser equipos en cuartos de final');
     }
-    // Validate no duplicates
-    if (new Set(picks).size !== 4) throw new BadRequestException('Los picks deben ser 4 equipos diferentes');
+    // NOTA: se permiten equipos REPETIDOS en distintas posiciones (ej: Francia
+    // 1º/2º/3º/4º). Es una apuesta más arriesgada — solo suma en la posición
+    // exacta que acierte. Antes exigíamos 4 equipos distintos.
 
     // Check existing
     const existing = await this.prisma.final_bet.findUnique({
@@ -75,7 +76,8 @@ export class FinalBetsService {
       throw new BadRequestException('La fecha límite para modificar la apuesta final ha pasado');
     }
 
-    // Si cambian picks, validamos que sean equipos en cuartos y sin duplicados.
+    // Si cambian picks, validamos que sean equipos en cuartos. Se PERMITEN
+    // equipos repetidos en distintas posiciones (apuesta más arriesgada).
     // bet.pick_* es `string | null` en Prisma → filtramos nulls con type guard
     // para que nextPicks quede tipado como string[].
     const nextPicks: string[] = [
@@ -96,9 +98,6 @@ export class FinalBetsService {
       if (!quarterIds.has(pick)) {
         throw new BadRequestException('Todos los picks deben ser equipos en cuartos de final');
       }
-    }
-    if (new Set(nextPicks).size !== 4) {
-      throw new BadRequestException('Los picks deben ser 4 equipos diferentes');
     }
 
     return this.prisma.final_bet.update({
