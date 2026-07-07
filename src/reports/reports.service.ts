@@ -899,9 +899,13 @@ export class ReportsService {
       include: { user: { select: { id: true, username: true, full_name: true, phone: true } } },
     });
     const betUserIds = new Set((report?.bets ?? []).map((b: any) => b?.user_id));
+    // Alfabético por nombre (locale es → respeta acentos/ñ). El PDF re-deriva
+    // esta lista localmente, así que el orden se aplica ACÁ (no alcanza con
+    // ordenar en getReport).
     const pendingUsers = participants
       .filter(p => !betUserIds.has(p.user_id))
-      .map(p => ({ full_name: p.user?.full_name ?? '-', username: p.user?.username ?? '-', phone: (p.user as any)?.phone ?? '-' }));
+      .map(p => ({ full_name: p.user?.full_name ?? '-', username: p.user?.username ?? '-', phone: (p.user as any)?.phone ?? '-' }))
+      .sort((a, b) => a.full_name.localeCompare(b.full_name, 'es', { sensitivity: 'base' }));
 
     const teamMap = new Map<string, string>();
     for (const t of (report?.quarter_teams ?? [])) {
