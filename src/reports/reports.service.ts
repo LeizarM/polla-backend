@@ -944,6 +944,20 @@ export class ReportsService {
 
       // Bets table
       this.drawSectionTitle(doc, 'Apuestas de los Participantes', C.primary, 'users');
+      // Ofuscación: las predicciones se ocultan hasta el cierre de apuestas.
+      // getReport ya devuelve los picks en null cuando NO está revelado, pero
+      // acá lo reflejamos con un placeholder y una nota clara.
+      const revealed = report?.revealed !== false;
+      if (!revealed) {
+        const dl = report?.tournament?.final_bet_deadline;
+        const dlLabel = dl
+          ? new Date(dl).toLocaleString('es-BO', { timeZone: 'America/La_Paz', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })
+          : null;
+        doc.fontSize(9).font('Helvetica-Oblique').fillColor(C.muted)
+          .text(`Las predicciones están ocultas hasta el cierre de apuestas${dlLabel ? ` (${dlLabel})` : ''}. Se revelan después.`);
+        doc.moveDown(0.4);
+        doc.font('Helvetica');
+      }
       if ((report?.bets?.length ?? 0) > 0) {
         // Cada posición muestra cuántos puntos vale su acierto (12/8/4/2). La
         // columna "Pts" al final es el TOTAL que sacó cada participante.
@@ -951,11 +965,13 @@ export class ReportsService {
         const colWidths = [30, 130, 105, 112, 105, 105, 40, 60];
         this.drawGridHeader(doc, headers, colWidths);
         (report?.bets ?? []).forEach((b: any, i: number) => {
-          const isTop = i < 3;
+          const isTop = revealed && i < 3;
           this.drawGridRow(doc, [
             String(b?.position ?? '-'), b?.full_name ?? '-',
-            teamMap.get(b?.pick_1st) ?? '-', teamMap.get(b?.pick_2nd) ?? '-',
-            teamMap.get(b?.pick_3rd) ?? '-', teamMap.get(b?.pick_4th) ?? '-',
+            revealed ? (teamMap.get(b?.pick_1st) ?? '-') : '•••',
+            revealed ? (teamMap.get(b?.pick_2nd) ?? '-') : '•••',
+            revealed ? (teamMap.get(b?.pick_3rd) ?? '-') : '•••',
+            revealed ? (teamMap.get(b?.pick_4th) ?? '-') : '•••',
             String(b?.total_points ?? 0), `${cur3} ${formatMoney(b?.prize_won ?? 0)}`,
           ], colWidths, i, isTop);
         });

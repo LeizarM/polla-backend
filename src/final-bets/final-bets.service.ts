@@ -248,6 +248,13 @@ export class FinalBetsService {
     // no) — coincide con la app y con resolve(). `bets.length` = solo apostadores.
     const pool = matchdayCount * participants.length * betFinal;
 
+    // Ofuscación: las predicciones de los participantes NO se revelan hasta que
+    // pase la fecha límite (tiempo de gracia). Así NADIE —ni el admin, que
+    // también apuesta— ve los picks ajenos antes de tiempo. Se compara el
+    // instante absoluto (UTC), así que es correcto sin importar la zona horaria.
+    const deadline = tournament.final_bet_deadline;
+    const revealed = !deadline || new Date() >= deadline;
+
     return {
       tournament: {
         id: tournament.id,
@@ -256,7 +263,9 @@ export class FinalBetsService {
         matchday_count: matchdayCount,
         status: tournament.status,
         currency: tournament.currency ?? 'Bs',
+        final_bet_deadline: deadline,
       },
+      revealed,
       pool,
       participant_count: bets.length,
       pending_count: pendingUsers.length,
@@ -266,10 +275,11 @@ export class FinalBetsService {
         user_id: b.user?.id,
         username: b.user?.username,
         full_name: b.user?.full_name,
-        pick_1st: b.pick_1st,
-        pick_2nd: b.pick_2nd,
-        pick_3rd: b.pick_3rd,
-        pick_4th: b.pick_4th,
+        // Picks ocultos hasta el cierre (null en la capa de datos → no se filtran).
+        pick_1st: revealed ? b.pick_1st : null,
+        pick_2nd: revealed ? b.pick_2nd : null,
+        pick_3rd: revealed ? b.pick_3rd : null,
+        pick_4th: revealed ? b.pick_4th : null,
         total_points: b.total_points,
         status: b.status,
         prize_won: Number(b.prize_won),
