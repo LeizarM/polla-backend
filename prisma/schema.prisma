@@ -142,6 +142,11 @@ model match {
   score_a     Int?
   score_b     Int?
   result      String?   @db.VarChar(5)
+  // Equipo que pasó de fase. Solo se usa en partidos de eliminación (en grupos
+  // queda null). El marcador/result de 90' es para la APUESTA de la jornada;
+  // esto es el AVANCE real (incluye alargue/penales). Se compara contra
+  // team_a_id/team_b_id → no hace falta relación aparte.
+  advanced_team_id String? @db.Uuid
   created_at  DateTime  @default(now()) @db.Timestamptz(6)
   updated_at  DateTime  @default(now()) @db.Timestamptz(6)
 

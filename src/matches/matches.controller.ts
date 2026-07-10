@@ -53,8 +53,8 @@ export class MatchesController {
   @Patch(':id/scores')
   @UseGuards(AdminGuard)
   @ApiOperation({ summary: 'Update match scores (admin)' })
-  async updateScores(@Param('id') id: string, @Body() data: { score_a: number; score_b: number }) {
-    return this.matchesService.updateScores(id, data.score_a, data.score_b);
+  async updateScores(@Param('id') id: string, @Body() data: { score_a: number; score_b: number; advanced_team_id?: string | null }) {
+    return this.matchesService.updateScores(id, data.score_a, data.score_b, data.advanced_team_id);
   }
 
   @Delete(':id')

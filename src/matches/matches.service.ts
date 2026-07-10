@@ -121,11 +121,27 @@ export class MatchesService {
     return { success: true, deleted_id: id };
   }
 
-  async updateScores(id: string, score_a: number, score_b: number) {
+  async updateScores(id: string, score_a: number, score_b: number, advancedTeamId?: string | null) {
     // Calculate result: L = local wins, V = visitor wins, E = draw
     let result = 'E';
     if (score_a > score_b) result = 'L';
     else if (score_b > score_a) result = 'V';
+
+    // Avance de fase (opcional; solo eliminación). Si se envía, debe ser uno de
+    // los dos equipos del partido. `undefined` = NO tocar la columna (preservar
+    // lo que haya). El result de 90' sigue siendo el de la APUESTA de la jornada;
+    // esto es aparte (incluye alargue/penales).
+    const matchData: any = { score_a, score_b, result, status: 'finished', updated_at: new Date() };
+    if (advancedTeamId !== undefined) {
+      if (advancedTeamId) {
+        const m = await this.prisma.match.findUnique({ where: { id }, select: { team_a_id: true, team_b_id: true } });
+        if (!m) throw new NotFoundException('Partido no encontrado');
+        if (advancedTeamId !== m.team_a_id && advancedTeamId !== m.team_b_id) {
+          throw new BadRequestException('El equipo que avanza debe ser uno de los dos del partido');
+        }
+      }
+      matchData.advanced_team_id = advancedTeamId || null;
+    }
 
     // Run match update + pick correctness + ticket totals in a single transaction.
     // Doing this on EVERY score save (not only on full-matchday finalization) means
@@ -134,13 +150,7 @@ export class MatchesService {
       // 1) Update the match
       const updated = await tx.match.update({
         where: { id },
-        data: {
-          score_a,
-          score_b,
-          result,
-          status: 'finished',
-          updated_at: new Date(),
-        },
+        data: matchData,
         include: {
           team_a: true,
           team_b: true,
