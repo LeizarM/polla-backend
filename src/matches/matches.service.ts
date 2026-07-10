@@ -134,10 +134,25 @@ export class MatchesService {
     const matchData: any = { score_a, score_b, result, status: 'finished', updated_at: new Date() };
     if (advancedTeamId !== undefined) {
       if (advancedTeamId) {
-        const m = await this.prisma.match.findUnique({ where: { id }, select: { team_a_id: true, team_b_id: true } });
+        const m = await this.prisma.match.findUnique({
+          where: { id },
+          select: { team_a_id: true, team_b_id: true, matchday: { select: { tournament_id: true } } },
+        });
         if (!m) throw new NotFoundException('Partido no encontrado');
         if (advancedTeamId !== m.team_a_id && advancedTeamId !== m.team_b_id) {
           throw new BadRequestException('El equipo que avanza debe ser uno de los dos del partido');
+        }
+        // El avance solo aplica a ELIMINACIÓN: ambos equipos deben estar
+        // clasificados a cuartos (advanced_to_quarters) en el torneo.
+        const qCount = await this.prisma.tournament_team.count({
+          where: {
+            tournament_id: m.matchday.tournament_id,
+            advanced_to_quarters: true,
+            team_id: { in: [m.team_a_id, m.team_b_id] },
+          },
+        });
+        if (qCount < 2) {
+          throw new BadRequestException('El avance de fase solo aplica a equipos clasificados a cuartos');
         }
       }
       matchData.advanced_team_id = advancedTeamId || null;
